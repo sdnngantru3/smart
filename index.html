@@ -225,6 +225,10 @@ function handleRequest(action, params, body) {
     else if (action === 'login') result = body &amp;&amp; body.spreadsheetId ? loginUserBySpreadsheetId(body.spreadsheetId, body.username, body.password, body.role) : loginUser(body.username, body.password, body.role);
     else if (action === 'getGuruProfile') result = getGuruProfile(body || {});
     else if (action === 'saveGuruProfile') result = saveGuruProfile(body || {});
+    else if (action === 'getMenuGuru') result = getMenuGuru(body || {});
+    else if (action === 'saveMenuGuru') result = saveMenuGuru(body || {});
+    else if (action === 'deleteMenuGuru') result = deleteMenuGuru(body || {});
+    else if (action === 'reorderMenuGuru') result = reorderMenuGuru(body || {});
     else if (action === 'getStudents') result = getStudentsByClass((body &amp;&amp; body.kelas) || params.kelas || '');
     else if (action === 'saveStudent') result = saveStudentAndCreateUser(body);
     else if (action === 'importStudents') result = importStudentsAndCreateUsers(body.records || []);
@@ -282,7 +286,8 @@ function getDatabaseSchemas() {
     'HasilKuis': ['ID', 'KuisID', 'NIS', 'NamaSiswa', 'Benar', 'Salah', 'Nilai', 'Tanggal'],
     'Pengumuman': ['ID', 'Tanggal', 'Judul', 'Isi', 'TargetRole', 'TargetKelas', 'Pembuat'],
     'Aktivitas': ['ID', 'Waktu', 'User', 'Aktivitas'],
-    'Game': ['ID', 'NamaGame', 'Pemain', 'Skor', 'Waktu']
+    'Game': ['ID', 'NamaGame', 'Pemain', 'Skor', 'Waktu'],
+    'MenuGuru': ['ID', 'NamaMenu', 'Ikon', 'Tipe', 'Target', 'TargetTab', 'Urutan', 'Status', 'CreatedAt', 'UpdatedAt']
   };
 }
 
@@ -775,6 +780,173 @@ function saveGuruProfile(body) {
   }
 }
 
+
+// ================================================================
+// MENU UTAMA GURU DINAMIS
+// ================================================================
+function isActiveGuru_(body) {
+  body = body || {};
+  var username = String(body.username || '').trim().toLowerCase();
+  var role = String(body.role || '').trim().toLowerCase();
+  if (role !== 'guru' || !username) return false;
+  var users = getSheetData('Users').data || [];
+  return users.some(function(u) {
+    return String(u.Username || '').trim().toLowerCase() === username &amp;&amp;
+           String(u.Role || '').trim().toLowerCase() === 'guru' &amp;&amp;
+           String(u.Status || '').trim().toLowerCase() === 'aktif';
+  });
+}
+
+function normalizeMenuType_(value) {
+  return String(value || 'file').trim().toLowerCase() === 'link' ? 'link' : 'file';
+}
+
+function normalizeMenuTargetTab_(value) {
+  return String(value || 'same').trim().toLowerCase() === 'blank' ? 'blank' : 'same';
+}
+
+function normalizeMenuStatus_(value) {
+  return String(value || 'aktif').trim().toLowerCase() === 'nonaktif' ? 'nonaktif' : 'aktif';
+}
+
+function validateMenuTarget_(type, target) {
+  type = normalizeMenuType_(type);
+  target = String(target || '').trim();
+  if (!target) return 'Target file/link wajib diisi.';
+  if (/^\s*(javascript|data|vbscript):/i.test(target)) return 'Target tidak aman. Gunakan file lokal, http:// atau https://.';
+  if (type === 'link' &amp;&amp; !/^https?:\/\//i.test(target)) return 'Untuk tipe Link, URL harus diawali http:// atau https://.';
+  return '';
+}
+
+function getMenuGuru(body) {
+  body = body || {};
+  var ss = getSpreadsheetById_(String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim());
+  ensureDatabaseSheetsForSpreadsheet_(ss);
+  var rows = getSheetDataFromSpreadsheet_(ss, 'MenuGuru').map(function(m) {
+    return {
+      ID: String(m.ID || ''),
+      NamaMenu: String(m.NamaMenu || ''),
+      Ikon: String(m.Ikon || 'fa-solid fa-link'),
+      Tipe: normalizeMenuType_(m.Tipe),
+      Target: String(m.Target || ''),
+      TargetTab: normalizeMenuTargetTab_(m.TargetTab),
+      Urutan: Number(m.Urutan || 0),
+      Status: normalizeMenuStatus_(m.Status),
+      CreatedAt: m.CreatedAt || '',
+      UpdatedAt: m.UpdatedAt || ''
+    };
+  });
+  rows.sort(function(a,b) {
+    var ua = Number(a.Urutan || 0), ub = Number(b.Urutan || 0);
+    if (ua !== ub) return ua - ub;
+    return a.NamaMenu.localeCompare(b.NamaMenu, 'id');
+  });
+  var includeInactive = String(body.includeInactive || '').toLowerCase() === 'true' || body.includeInactive === true;
+  if (!includeInactive) rows = rows.filter(function(m) { return m.Status === 'aktif'; });
+  return {success:true, message:'Menu Guru berhasil dimuat.', data:rows};
+}
+
+function saveMenuGuru(body) {
+  body = body || {};
+  if (!isActiveGuru_(body)) return {success:false, message:'Hanya Guru aktif yang dapat mengatur Menu Utama.', data:null};
+  var ss = getSpreadsheetById_(String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim());
+  ensureDatabaseSheetsForSpreadsheet_(ss);
+  var sheet = ss.getSheetByName('MenuGuru');
+  var nama = String(body.NamaMenu || '').trim();
+  var ikon = String(body.Ikon || 'fa-solid fa-link').trim() || 'fa-solid fa-link';
+  var tipe = normalizeMenuType_(body.Tipe);
+  var target = String(body.Target || '').trim();
+  var targetTab = normalizeMenuTargetTab_(body.TargetTab);
+  var status = normalizeMenuStatus_(body.Status);
+  var id = String(body.ID || '').trim();
+
+  if (!nama) return {success:false, message:'Nama Menu wajib diisi.', data:null};
+  if (nama.length &gt; 50) return {success:false, message:'Nama Menu maksimal 50 karakter.', data:null};
+  var targetError = validateMenuTarget_(tipe, target);
+  if (targetError) return {success:false, message:targetError, data:null};
+
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var idIndex = headers.indexOf('ID');
+  var orderIndex = headers.indexOf('Urutan');
+  var createdIndex = headers.indexOf('CreatedAt');
+  var foundRow = -1;
+  var existingCreatedAt = '';
+  for (var i=1; i&lt;values.length; i++) {
+    if (id &amp;&amp; String(values[i][idIndex] || '').trim() === id) {
+      foundRow = i + 1;
+      existingCreatedAt = createdIndex &gt;= 0 ? values[i][createdIndex] : '';
+      break;
+    }
+  }
+  if (!id) id = 'MNU-' + Date.now() + '-' + Math.floor(Math.random()*1000);
+
+  var urutan = Number(body.Urutan);
+  if (!isFinite(urutan) || urutan &lt;= 0) {
+    var maxOrder = 0;
+    for (var j=1; j&lt;values.length; j++) maxOrder = Math.max(maxOrder, Number(values[j][orderIndex] || 0));
+    urutan = maxOrder + 1;
+  }
+
+  var now = new Date().toISOString();
+  var record = {
+    ID:id, NamaMenu:nama, Ikon:ikon, Tipe:tipe, Target:target,
+    TargetTab:targetTab, Urutan:urutan, Status:status,
+    CreatedAt:existingCreatedAt || now, UpdatedAt:now
+  };
+  var row = headers.map(function(h){ return record[h] !== undefined ? record[h] : ''; });
+  if (foundRow &gt; 0) sheet.getRange(foundRow,1,1,headers.length).setValues([row]);
+  else sheet.appendRow(row);
+  return {success:true, message:foundRow &gt; 0 ? 'Menu berhasil diperbarui.' : 'Menu berhasil ditambahkan.', data:record};
+}
+
+function deleteMenuGuru(body) {
+  body = body || {};
+  if (!isActiveGuru_(body)) return {success:false, message:'Hanya Guru aktif yang dapat menghapus Menu Utama.', data:null};
+  var ss = getSpreadsheetById_(String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim());
+  ensureDatabaseSheetsForSpreadsheet_(ss);
+  var id = String(body.ID || '').trim();
+  if (!id) return {success:false, message:'ID menu tidak ditemukan.', data:null};
+  var sheet = ss.getSheetByName('MenuGuru');
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0], idx = headers.indexOf('ID');
+  for (var i=1; i&lt;values.length; i++) {
+    if (String(values[i][idx] || '').trim() === id) {
+      sheet.deleteRow(i+1);
+      return {success:true, message:'Menu berhasil dihapus.', data:null};
+    }
+  }
+  return {success:false, message:'Menu tidak ditemukan.', data:null};
+}
+
+function reorderMenuGuru(body) {
+  body = body || {};
+  if (!isActiveGuru_(body)) return {success:false, message:'Hanya Guru aktif yang dapat mengatur urutan menu.', data:null};
+  var ss = getSpreadsheetById_(String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim());
+  ensureDatabaseSheetsForSpreadsheet_(ss);
+  var ids = body.ids || body.order || [];
+  if (typeof ids === 'string') {
+    try { ids = JSON.parse(ids); } catch(e) { ids = ids.split(','); }
+  }
+  if (!Array.isArray(ids) || !ids.length) return {success:false, message:'Urutan menu tidak valid.', data:null};
+
+  var sheet = ss.getSheetByName('MenuGuru');
+  var values = sheet.getDataRange().getValues(), headers = values[0];
+  var idIdx = headers.indexOf('ID'), orderIdx = headers.indexOf('Urutan'), updatedIdx = headers.indexOf('UpdatedAt');
+  var rowMap = {};
+  for (var i=1; i&lt;values.length; i++) rowMap[String(values[i][idIdx] || '').trim()] = i+1;
+  var now = new Date().toISOString(), updated = 0;
+  ids.forEach(function(id, index) {
+    id = String(id || '').trim();
+    if (rowMap[id]) {
+      sheet.getRange(rowMap[id], orderIdx+1).setValue(index+1);
+      if (updatedIdx &gt;= 0) sheet.getRange(rowMap[id], updatedIdx+1).setValue(now);
+      updated++;
+    }
+  });
+  return {success:true, message:'Urutan Menu Utama berhasil disimpan.', data:{updated:updated}};
+}
+
 function ensureDatabaseSheetsForSpreadsheet_(ss) {
   var schemas = getDatabaseSchemas();
   Object.keys(schemas).forEach(function(sheetName) {
@@ -1241,7 +1413,6 @@ function clearAllData() {
   }
   return { success: true, message: 'Seluruh isi data spreadsheet telah dikosongkan (Header tetap dipertahankan).', data: null };
 }
-
 </template>
 
   <!-- JAVASCRIPT APPLICATION CORE -->
@@ -1263,6 +1434,9 @@ function clearAllData() {
     };
 
     let currentUser = JSON.parse(localStorage.getItem(APP_SESSION_KEY)) || null;
+
+    let customGuruMenus = [];
+    let draggedMenuGuruId = null;
 
     // Dummy fallback data when offline / in DEMO MODE
     const MOCK_DATA = {
@@ -1486,7 +1660,7 @@ function clearAllData() {
     // ==========================================
     // SETUP DATABASE & CONFIGURATION MODAL
     // ==========================================
-    function showSetupModal() {
+    function showSetupModal(initialTab) {
       const content = `
         <div class="space-y-5">
           <div class="border-b border-slate-100 pb-3">
@@ -1500,6 +1674,7 @@ function clearAllData() {
             <button onclick="switchSetupTab('config')" id="tab-btn-config" class="px-3 py-2 border-b-2 border-indigo-600 text-indigo-600 font-semibold">Konfigurasi Koneksi</button>
             <button onclick="switchSetupTab('code')" id="tab-btn-code" class="px-3 py-2 text-slate-600 hover:text-indigo-600">📜 Kode Apps Script</button>
             <button onclick="switchSetupTab('guide')" id="tab-btn-guide" class="px-3 py-2 text-slate-600 hover:text-indigo-600">📖 Panduan Setup</button>
+            <button onclick="switchSetupTab('menu')" id="tab-btn-menu" class="px-3 py-2 text-slate-600 hover:text-indigo-600">🧩 Menu Utama</button>
           </div>
 
           <!-- TAB 1: CONFIG FORM -->
@@ -1539,6 +1714,47 @@ function clearAllData() {
               <button onclick="clearConfiguration()" class="bg-red-500 hover:bg-red-600 text-white text-xs font-semibold py-2.5 px-3 rounded-lg transition flex items-center justify-center gap-1 shadow">
                 <i class="fa-solid fa-trash-can"></i> Hapus Config
               </button>
+            </div>
+          </div>
+
+
+          <!-- TAB 2: MENU UTAMA GURU -->
+          <div id="setup-tab-menu" class="hidden space-y-4">
+            <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 class="font-bold text-sm text-indigo-900 flex items-center gap-2"><i class="fa-solid fa-grip-vertical"></i> Kelola Menu Utama Guru</h4>
+                  <p class="text-[11px] text-indigo-700 mt-1">Tambahkan file seperti <b>kalender.html</b> atau tautan website. Urutan menu dapat digeser dengan drag & drop.</p>
+                </div>
+                <button onclick="openMenuGuruForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-2 rounded-xl shadow flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-plus"></i> Tambah Menu
+                </button>
+              </div>
+            </div>
+            <div class="border border-slate-200 rounded-2xl overflow-hidden">
+              <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700">Menu Bawaan</span>
+                <span class="text-[10px] text-slate-400">Tidak dapat dihapus</span>
+              </div>
+              <div class="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-house text-indigo-600 w-5"></i> Dashboard</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-users text-indigo-600 w-5"></i> Data Siswa</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-book text-indigo-600 w-5"></i> Master Mapel</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-calendar-check text-indigo-600 w-5"></i> Absensi</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-file-pen text-indigo-600 w-5"></i> Penilaian</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-chart-line text-indigo-600 w-5"></i> Hasil Belajar</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-journal-whills text-indigo-600 w-5"></i> Jurnal Harian</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-bullhorn text-indigo-600 w-5"></i> Pengumuman</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-robot text-indigo-600 w-5"></i> Asisten AI Guru</div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-100"><i class="fa-solid fa-id-card text-indigo-600 w-5"></i> Profil Guru</div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-700">Menu Tambahan</span>
+                <button onclick="loadMenuGuruSettings()" class="text-[11px] text-indigo-600 hover:underline"><i class="fa-solid fa-rotate"></i> Muat ulang</button>
+              </div>
+              <div id="menu-guru-settings-list" class="space-y-2"></div>
             </div>
           </div>
 
@@ -1582,15 +1798,227 @@ function clearAllData() {
         </div>
       `;
       openModal(content);
+      if (initialTab === 'menu') setTimeout(() => switchSetupTab('menu'), 0);
+      if (currentUser && String(currentUser.Role).toLowerCase() === 'guru') loadMenuGuruSettings();
     }
 
     function switchSetupTab(tabName) {
-      ['config', 'code', 'guide'].forEach(t => {
+      ['config', 'menu', 'code', 'guide'].forEach(t => {
         document.getElementById(`setup-tab-${t}`).classList.add('hidden');
         document.getElementById(`tab-btn-${t}`).className = 'px-3 py-2 text-slate-600 hover:text-indigo-600';
       });
       document.getElementById(`setup-tab-${tabName}`).classList.remove('hidden');
       document.getElementById(`tab-btn-${tabName}`).className = 'px-3 py-2 border-b-2 border-indigo-600 text-indigo-600 font-semibold';
+    }
+
+
+    // ============================================================
+    // MENU UTAMA GURU DINAMIS
+    // ============================================================
+    function menuGuruIconHtml(icon) {
+      const value = String(icon || '').trim();
+      if (!value) return '<i class="fa-solid fa-link"></i>';
+      if (/^fa-(solid|regular|brands)\s+fa-[a-z0-9-]+$/i.test(value)) return `<i class="${escapeHtml(value)}"></i>`;
+      return escapeHtml(value.slice(0, 2));
+    }
+
+    function normalizeCustomMenuTarget(menu) {
+      const target = String(menu && menu.Target || '').trim();
+      if (!target) return '';
+      if (String(menu.Tipe || 'file').toLowerCase() === 'link') return target;
+      try { return new URL(target, window.location.href).href; } catch (e) { return target; }
+    }
+
+    function openCustomGuruMenu(menu) {
+      if (!menu || String(menu.Status || 'aktif').toLowerCase() !== 'aktif') return;
+      const target = normalizeCustomMenuTarget(menu);
+      if (!target || /^(javascript|data|vbscript):/i.test(target)) {
+        showToast('Target menu tidak valid atau tidak aman.', 'error'); return;
+      }
+      document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('bg-indigo-50','text-indigo-600'));
+      const safeId = String(menu.ID || '').replace(/[^a-zA-Z0-9_-]/g,'');
+      const btn = document.getElementById('nav-custom-' + safeId);
+      if (btn) btn.classList.add('bg-indigo-50','text-indigo-600');
+      const tab = String(menu.TargetTab || 'same').toLowerCase() === 'blank' ? '_blank' : '_self';
+      window.open(target, tab, tab === '_blank' ? 'noopener,noreferrer' : '');
+    }
+
+    async function loadGuruCustomMenus() {
+      if (!currentUser || String(currentUser.Role).toLowerCase() !== 'guru') return;
+      const holder = document.getElementById('guru-custom-menu-list');
+      if (!holder) return;
+      const res = await apiCall('getMenuGuru', {}, {
+        username: currentUser.Username, role: currentUser.Role,
+        spreadsheetId: config.spreadsheetId, includeInactive: false
+      });
+      if (!res.success) { holder.innerHTML = ''; return; }
+      customGuruMenus = Array.isArray(res.data) ? res.data : [];
+      holder.innerHTML = '';
+      customGuruMenus.forEach(menu => {
+        const safeId = String(menu.ID || '').replace(/[^a-zA-Z0-9_-]/g,'');
+        const btn = document.createElement('button');
+        btn.id = 'nav-custom-' + safeId;
+        btn.className = 'nav-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition';
+        btn.title = menu.Target || '';
+        const icon = document.createElement('span');
+        icon.className = 'w-4 text-center text-indigo-600';
+        const iconValue = String(menu.Ikon || '').trim();
+        if (/^fa-(solid|regular|brands)\s+fa-[a-z0-9-]+$/i.test(iconValue)) icon.innerHTML = menuGuruIconHtml(iconValue);
+        else icon.textContent = iconValue || '🔗';
+        const label = document.createElement('span');
+        label.className = 'truncate';
+        label.textContent = menu.NamaMenu || 'Menu';
+        btn.appendChild(icon); btn.appendChild(label);
+        btn.onclick = () => openCustomGuruMenu(menu);
+        holder.appendChild(btn);
+      });
+    }
+
+    async function loadMenuGuruSettings() {
+      const holder = document.getElementById('menu-guru-settings-list');
+      if (!holder) return;
+      if (!currentUser || String(currentUser.Role).toLowerCase() !== 'guru') {
+        holder.innerHTML = '<div class="bg-red-50 text-red-700 rounded-xl p-3 text-xs">Pengaturan Menu Utama hanya tersedia untuk Guru.</div>'; return;
+      }
+      holder.innerHTML = '<div class="p-4 text-center text-xs text-slate-400"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Memuat menu...</div>';
+      const res = await apiCall('getMenuGuru', {}, {
+        username: currentUser.Username, role: currentUser.Role,
+        spreadsheetId: config.spreadsheetId, includeInactive: true
+      });
+      if (!res.success) {
+        holder.innerHTML = `<div class="bg-red-50 text-red-700 rounded-xl p-3 text-xs">${escapeHtml(res.message || 'Gagal memuat menu.')}</div>`; return;
+      }
+      customGuruMenus = Array.isArray(res.data) ? res.data : [];
+      renderMenuGuruSettingsList();
+    }
+
+    function renderMenuGuruSettingsList() {
+      const holder = document.getElementById('menu-guru-settings-list');
+      if (!holder) return;
+      if (!customGuruMenus.length) {
+        holder.innerHTML = '<div class="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center"><i class="fa-solid fa-folder-plus text-2xl text-slate-300"></i><p class="text-xs font-semibold text-slate-500 mt-2">Belum ada menu tambahan.</p><p class="text-[11px] text-slate-400 mt-1">Contoh: Kalender → kalender.html</p></div>';
+        return;
+      }
+      holder.innerHTML = '';
+      customGuruMenus.forEach(menu => {
+        const item = document.createElement('div');
+        item.draggable = true; item.dataset.id = menu.ID;
+        item.className = 'menu-guru-sort-item bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-3 hover:border-indigo-200 transition';
+        item.addEventListener('dragstart', () => { draggedMenuGuruId = menu.ID; item.classList.add('opacity-50'); });
+        item.addEventListener('dragend', () => { draggedMenuGuruId = null; item.classList.remove('opacity-50'); });
+        item.addEventListener('dragover', e => e.preventDefault());
+        item.addEventListener('drop', e => { e.preventDefault(); reorderMenuGuruLocal(menu.ID); });
+
+        const grip = document.createElement('div');
+        grip.className = 'text-slate-300 cursor-grab px-1'; grip.innerHTML = '<i class="fa-solid fa-grip-vertical"></i>';
+        const icon = document.createElement('div');
+        icon.className = 'w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm';
+        const iconValue = String(menu.Ikon || '').trim();
+        if (/^fa-(solid|regular|brands)\s+fa-[a-z0-9-]+$/i.test(iconValue)) icon.innerHTML = menuGuruIconHtml(iconValue);
+        else icon.textContent = iconValue || '🔗';
+
+        const info = document.createElement('div'); info.className = 'flex-1 min-w-0';
+        const name = document.createElement('div'); name.className = 'text-xs font-bold text-slate-800 truncate'; name.textContent = menu.NamaMenu || '';
+        const target = document.createElement('div'); target.className = 'text-[10px] text-slate-400 truncate mt-0.5';
+        target.textContent = `${String(menu.Tipe).toUpperCase()} • ${menu.Target} • ${String(menu.TargetTab || 'same') === 'blank' ? 'Tab baru' : 'Tab yang sama'}`;
+        info.appendChild(name); info.appendChild(target);
+
+        const status = document.createElement('span');
+        status.className = 'text-[10px] px-2 py-1 rounded-full ' + (String(menu.Status).toLowerCase()==='aktif' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500');
+        status.textContent = String(menu.Status).toLowerCase()==='aktif' ? 'Aktif' : 'Nonaktif';
+
+        const actions = document.createElement('div'); actions.className = 'flex items-center gap-1';
+        const edit = document.createElement('button'); edit.className = 'p-2 rounded-lg text-indigo-600 hover:bg-indigo-50'; edit.title = 'Edit'; edit.innerHTML = '<i class="fa-solid fa-pen"></i>'; edit.onclick = () => openMenuGuruForm(menu);
+        const del = document.createElement('button'); del.className = 'p-2 rounded-lg text-red-500 hover:bg-red-50'; del.title = 'Hapus'; del.innerHTML = '<i class="fa-solid fa-trash"></i>'; del.onclick = () => deleteMenuGuruItem(menu);
+        actions.appendChild(edit); actions.appendChild(del);
+
+        item.appendChild(grip); item.appendChild(icon); item.appendChild(info); item.appendChild(status); item.appendChild(actions);
+        holder.appendChild(item);
+      });
+    }
+
+    function reorderMenuGuruLocal(targetId) {
+      if (!draggedMenuGuruId || draggedMenuGuruId === targetId) return;
+      const from = customGuruMenus.findIndex(x => String(x.ID) === String(draggedMenuGuruId));
+      const to = customGuruMenus.findIndex(x => String(x.ID) === String(targetId));
+      if (from < 0 || to < 0) return;
+      const moved = customGuruMenus.splice(from,1)[0];
+      customGuruMenus.splice(to,0,moved);
+      customGuruMenus.forEach((m,i) => m.Urutan = i+1);
+      renderMenuGuruSettingsList();
+      saveMenuGuruOrder();
+    }
+
+    async function saveMenuGuruOrder() {
+      const res = await apiCall('reorderMenuGuru', {}, {
+        username: currentUser.Username, role: currentUser.Role,
+        spreadsheetId: config.spreadsheetId, ids: customGuruMenus.map(m => m.ID)
+      });
+      if (!res.success) showToast(res.message || 'Urutan menu gagal disimpan.', 'error');
+      else await loadGuruCustomMenus();
+    }
+
+    function openMenuGuruForm(menu) {
+      menu = menu || {};
+      const isEdit = !!menu.ID;
+      openModal(`
+        <div class="space-y-5">
+          <div class="border-b border-slate-100 pb-3">
+            <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-puzzle-piece text-indigo-600"></i> ${isEdit ? 'Edit Menu Utama' : 'Tambah Menu Utama'}</h3>
+            <p class="text-xs text-slate-500 mt-1">Menu dapat membuka file dalam repository GitHub Pages atau website eksternal.</p>
+          </div>
+          <form id="form-menu-guru" class="space-y-4">
+            <input type="hidden" id="menu-id" value="${escapeHtml(menu.ID || '')}">
+            <div><label class="block text-xs font-semibold text-slate-700 mb-1">Nama Menu *</label><input id="menu-nama" maxlength="50" value="${escapeHtml(menu.NamaMenu || '')}" placeholder="Contoh: Kalender" class="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-300 outline-none focus:ring-2 focus:ring-indigo-500" required></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label class="block text-xs font-semibold text-slate-700 mb-1">Ikon</label><input id="menu-ikon" value="${escapeHtml(menu.Ikon || 'fa-solid fa-calendar-days')}" placeholder="fa-solid fa-calendar-days" class="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-300"><p class="text-[10px] text-slate-400 mt-1">Bisa Font Awesome atau emoji.</p></div>
+              <div><label class="block text-xs font-semibold text-slate-700 mb-1">Tipe Target *</label><select id="menu-tipe" class="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-300"><option value="file" ${String(menu.Tipe || 'file')==='file'?'selected':''}>File lokal / GitHub Pages</option><option value="link" ${String(menu.Tipe || '')==='link'?'selected':''}>Link / URL</option></select></div>
+            </div>
+            <div><label class="block text-xs font-semibold text-slate-700 mb-1">File / URL *</label><input id="menu-target" value="${escapeHtml(menu.Target || '')}" placeholder="kalender.html atau https://contoh.com" class="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-300" required><p class="text-[10px] text-slate-400 mt-1">Untuk file, gunakan nama/path relatif terhadap index.html.</p></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label class="block text-xs font-semibold text-slate-700 mb-1">Buka di</label><select id="menu-target-tab" class="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-300"><option value="same" ${String(menu.TargetTab || 'same')==='same'?'selected':''}>Tab yang sama</option><option value="blank" ${String(menu.TargetTab || '')==='blank'?'selected':''}>Tab baru</option></select></div>
+              <div><label class="block text-xs font-semibold text-slate-700 mb-1">Status</label><select id="menu-status" class="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-300"><option value="aktif" ${String(menu.Status || 'aktif')==='aktif'?'selected':''}>Aktif</option><option value="nonaktif" ${String(menu.Status || '')==='nonaktif'?'selected':''}>Nonaktif</option></select></div>
+            </div>
+            <div class="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] text-amber-800"><i class="fa-solid fa-circle-info mr-1"></i> File seperti <b>kalender.html</b> harus ikut di-upload ke repository GitHub Pages.</div>
+            <div class="flex justify-end gap-2 pt-2"><button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">Batal</button><button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"><i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Menu</button></div>
+          </form>
+        </div>
+      `);
+      document.getElementById('form-menu-guru').addEventListener('submit', saveMenuGuruForm);
+    }
+
+    async function saveMenuGuruForm(e) {
+      e.preventDefault();
+      if (!currentUser || String(currentUser.Role).toLowerCase() !== 'guru') return;
+      const tipe = document.getElementById('menu-tipe').value;
+      const target = document.getElementById('menu-target').value.trim();
+      if (tipe === 'link' && !/^https?:\/\//i.test(target)) { showToast('URL Link harus diawali http:// atau https://.', 'warning'); return; }
+      if (/^\s*(javascript|data|vbscript):/i.test(target)) { showToast('Target menu tidak aman.', 'warning'); return; }
+      const payload = {
+        ID: document.getElementById('menu-id').value.trim(),
+        NamaMenu: document.getElementById('menu-nama').value.trim(),
+        Ikon: document.getElementById('menu-ikon').value.trim() || 'fa-solid fa-link',
+        Tipe: tipe, Target: target,
+        TargetTab: document.getElementById('menu-target-tab').value,
+        Status: document.getElementById('menu-status').value,
+        username: currentUser.Username, role: currentUser.Role, spreadsheetId: config.spreadsheetId
+      };
+      if (!payload.NamaMenu || !payload.Target) { showToast('Nama Menu dan Target wajib diisi.', 'warning'); return; }
+      const res = await apiCall('saveMenuGuru', {}, payload);
+      if (res.success) {
+        showToast(res.message || 'Menu berhasil disimpan.', 'success');
+        closeModal(); await loadMenuGuruSettings(); await loadGuruCustomMenus();
+      } else showToast(res.message || 'Menu gagal disimpan.', 'error');
+    }
+
+    async function deleteMenuGuruItem(menu) {
+      if (!menu || !menu.ID) return;
+      if (!confirm(`Hapus menu "${menu.NamaMenu}"?`)) return;
+      const res = await apiCall('deleteMenuGuru', {}, {ID:menu.ID, username:currentUser.Username, role:currentUser.Role, spreadsheetId:config.spreadsheetId});
+      if (res.success) {
+        showToast(res.message || 'Menu berhasil dihapus.', 'success');
+        await loadMenuGuruSettings(); await loadGuruCustomMenus();
+      } else showToast(res.message || 'Menu gagal dihapus.', 'error');
     }
 
     async function saveConfiguration() {
@@ -1904,10 +2332,15 @@ function clearAllData() {
           <button onclick="navigateTo('profil-guru')" class="nav-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition" id="nav-profil-guru">
             <i class="fa-solid fa-id-card w-4 text-center text-indigo-600"></i> Profil Guru
           </button>
-          <button onclick="showSetupModal()" class="nav-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition">
+          <div class="pt-2 mt-2 border-t border-slate-100">
+            <div class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2"><i class="fa-solid fa-layer-group"></i> Menu Tambahan</div>
+            <div id="guru-custom-menu-list" class="space-y-1"></div>
+          </div>
+          <button onclick="showSetupModal('menu')" class="nav-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition">
             <i class="fa-solid fa-sliders w-4 text-center"></i> Setting & Database
           </button>
         `;
+        loadGuruCustomMenus();
       } else {
         // SISWA MENU
         navList.innerHTML = `
