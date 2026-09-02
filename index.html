@@ -59,7 +59,7 @@
         <!-- Status Indicator Badge -->
         <span id="db-status-badge" class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-400 text-slate-900 flex items-center gap-1.5 shadow-sm">
           <span class="w-2 h-2 rounded-full bg-slate-900 animate-pulse"></span>
-          <span>MODE DEMO</span>
+          <span>MODE OFFLINE</span>
         </span>
 
         <!-- Setup Config Quick Access -->
@@ -130,8 +130,7 @@
   </div>
 
   <!-- CODE GAS & GUIDES TEMPLATES (HIDDEN DATA SOURCE FOR MODALS) -->
-  <template id="tpl-apps-script-code">
-// =================================================================
+  <template id="tpl-apps-script-code">// =================================================================
 // BACKEND GOOGLE APPS SCRIPT - SISTEM PEMBELAJARAN DIGITAL
 // =================================================================
 var REQUEST_SPREADSHEET_ID = '';
@@ -1412,8 +1411,7 @@ function clearAllData() {
     }
   }
   return { success: true, message: 'Seluruh isi data spreadsheet telah dikosongkan (Header tetap dipertahankan).', data: null };
-}
-</template>
+}</template>
 
   <!-- JAVASCRIPT APPLICATION CORE -->
   <script>
@@ -1438,7 +1436,7 @@ function clearAllData() {
     let customGuruMenus = [];
     let draggedMenuGuruId = null;
 
-    // Dummy fallback data when offline / in DEMO MODE
+    // Dummy fallback data when offline / in MODE OFFLINE
     const MOCK_DATA = {
       Siswa: [
         { NIS: '1001', NISN: '0051234561', Nama: 'Ahmad Rizky', JenisKelamin: 'L', TempatLahir: 'Jakarta', TanggalLahir: '2010-05-12', Alamat: 'Jl. Merdeka No. 10', Kelas: 'VII-A', NamaOrangTua: 'Bambang', NoHP: '08123456789', Status: 'aktif' },
@@ -1485,7 +1483,7 @@ function clearAllData() {
     });
 
     // ==========================================
-    // API SERVICE ADAPTER (GAS OR DEMO)
+    // API SERVICE ADAPTER (GAS OR OFFLINE)
     // ==========================================
     async function apiCall(action, params = {}, body = null) {
       // GitHub Pages mode: selalu gunakan HTTPS fetch ke Apps Script API.
@@ -1538,26 +1536,20 @@ function clearAllData() {
       return new Promise((resolve) => {
         setTimeout(() => {
           if (action === 'testConnection') {
-            resolve({ success: true, message: 'MODE DEMO: Simulasi Koneksi Sukses', data: { title: 'Spreadsheet Demo' } });
+            resolve({ success: true, message: 'MODE OFFLINE: Simulasi Koneksi Sukses', data: { title: 'Spreadsheet Demo' } });
           } else if (action === 'setupDatabase') {
-            resolve({ success: true, message: 'MODE DEMO: Database Siap Digunakan', data: null });
+            resolve({ success: true, message: 'MODE OFFLINE: Database Siap Digunakan', data: null });
           } else if (action === 'saveAppConfig') {
-            resolve({ success: true, message: 'MODE DEMO: Config tersimpan', data: body || null });
+            resolve({ success: true, message: 'MODE OFFLINE: Config tersimpan', data: body || null });
           } else if (action === 'getAppConfig') {
-            resolve({ success: true, message: 'MODE DEMO: Config tersedia', data: {SPREADSHEET_ID: config.spreadsheetId || '', APPSCRIPT_URL: config.scriptUrl || '', SCRIPT_ID: '', DEFAULT_STUDENT_PASSWORD: '123456'} });
+            resolve({ success: true, message: 'MODE OFFLINE: Config tersedia', data: {SPREADSHEET_ID: config.spreadsheetId || '', APPSCRIPT_URL: config.scriptUrl || '', SCRIPT_ID: '', DEFAULT_STUDENT_PASSWORD: '123456'} });
           } else if (action === 'login') {
-            const demoPasswordOk = body.password === '123456';
-            if (body.role === 'guru' && body.username === 'guru' && demoPasswordOk) {
-              resolve({ success: true, message: 'Login Demo Guru Success', data: { ID: 'G1', Username: 'guru', Nama: 'Budi Santoso, S.Pd', Role: 'guru', NIP: '19850101', Kelas: 'VII-A' } });
-            } else if (body.role === 'siswa' && demoPasswordOk) {
-              const demoStudent = (MOCK_DATA.Siswa || []).find(s => ('siswa' + String(s.NIS)) === body.username);
-              if (demoStudent) {
-                resolve({ success: true, message: 'Login Demo Siswa Success', data: { ID: 'USR-SISWA-' + demoStudent.NIS, Username: 'siswa' + demoStudent.NIS, Nama: demoStudent.Nama, Role: 'siswa', NIS: demoStudent.NIS, Kelas: demoStudent.Kelas } });
-              } else {
-                resolve({ success: false, message: 'Akun siswa demo tidak ditemukan.', data: null });
-              }
+            const offlinePasswordOk = String(body.password || '') === '123';
+            const offlineUsernameOk = String(body.username || '').trim().toLowerCase() === 'guru';
+            if (body.role === 'guru' && offlineUsernameOk && offlinePasswordOk) {
+              resolve({ success: true, message: 'Login Offline Guru berhasil.', data: { ID: 'OFFLINE-GURU', Username: 'guru', Nama: 'Guru Offline', Role: 'guru', NIP: '', Kelas: '' } });
             } else {
-              resolve({ success: false, message: 'Login Demo: gunakan username guru atau siswa + NIS, password 123456.', data: null });
+              resolve({ success: false, message: 'Mode Offline hanya dapat login sebagai Guru dengan username guru dan password 123.', data: null });
             }
           } else if (action === 'getGuruProfile') {
             const saved = JSON.parse(localStorage.getItem('edusmart_demo_guru_profile') || 'null');
@@ -1565,8 +1557,8 @@ function clearAllData() {
           } else if (action === 'saveGuruProfile') {
             const profile = Object.assign({}, body);
             localStorage.setItem('edusmart_demo_guru_profile', JSON.stringify(profile));
-            resolve({ success:true, message:'Profil Guru berhasil disimpan (Mode Demo).', data: profile });
-          } else if (action === 'getStudents') { const k=(body&&body.kelas)||params.kelas||''; resolve({ success:true, data:k ? MOCK_DATA.Siswa.filter(x=>String(x.Kelas||'')===String(k)) : MOCK_DATA.Siswa }); }
+            resolve({ success:true, message:'Profil Guru berhasil disimpan (Mode Offline).', data: profile });
+          } else if (action === 'getStudents') { const k=(body&&body.kelas)||params.kelas||''; const students=JSON.parse(localStorage.getItem('edusmart_offline_students') || JSON.stringify(MOCK_DATA.Siswa || [])); resolve({ success:true, data:k ? students.filter(x=>String(x.Kelas||'')===String(k)) : students }); }
           else if (action === 'getSubjects') resolve({ success: true, data: MOCK_DATA.MasterMapel });
           else if (action === 'getAttendance') resolve({ success: true, data: MOCK_DATA.Absensi });
           else if (action === 'getGrades') resolve({ success: true, data: MOCK_DATA.Nilai });
@@ -1574,8 +1566,21 @@ function clearAllData() {
           else if (action === 'getQuizzes') resolve({ success: true, data: MOCK_DATA.Kuis });
           else if (action === 'getQuizQuestions') resolve({ success: true, data: MOCK_DATA.SoalKuis });
           else if (action === 'getAnnouncements') resolve({ success: true, data: MOCK_DATA.Pengumuman });
-          else if (action.startsWith('save')) {
-            resolve({ success: true, message: 'Data berhasil tersimpan (Mode Demo)', data: null });
+          else if (action === 'saveStudent') {
+            const students = JSON.parse(localStorage.getItem('edusmart_offline_students') || JSON.stringify(MOCK_DATA.Siswa || []));
+            const incoming = Object.assign({}, body);
+            const idx = students.findIndex(x => String(x.NIS) === String(incoming.NIS));
+            if (idx >= 0) students[idx] = incoming; else students.push(incoming);
+            localStorage.setItem('edusmart_offline_students', JSON.stringify(students));
+            resolve({ success:true, message:'Data siswa tersimpan di perangkat (Mode Offline). Tidak dikirim ke Spreadsheet.', data:null });
+          } else if (action === 'getStudents') { const k=(body&&body.kelas)||params.kelas||''; const students=JSON.parse(localStorage.getItem('edusmart_offline_students') || JSON.stringify(MOCK_DATA.Siswa || [])); resolve({ success:true, data:k ? students.filter(x=>String(x.Kelas||'')===String(k)) : students }); }
+          else if (action === 'deleteStudent') {
+            const students = JSON.parse(localStorage.getItem('edusmart_offline_students') || JSON.stringify(MOCK_DATA.Siswa || []));
+            const next = students.filter(x => String(x.NIS) !== String(body.key));
+            localStorage.setItem('edusmart_offline_students', JSON.stringify(next));
+            resolve({ success:true, message:'Data siswa dihapus dari perangkat (Mode Offline).', data:null });
+          } else if (action.startsWith('save')) {
+            resolve({ success: true, message: 'Data berhasil tersimpan di perangkat (Mode Offline). Tidak dikirim ke Spreadsheet.', data: null });
           } else {
             resolve({ success: true, message: 'OK (Demo)', data: [] });
           }
@@ -1653,7 +1658,7 @@ function clearAllData() {
         badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-white animate-ping"></span> <span>DATABASE ONLINE</span>';
       } else {
         badge.className = 'px-3 py-1 rounded-full text-xs font-semibold bg-amber-400 text-slate-900 flex items-center gap-1.5 shadow-sm';
-        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-900"></span> <span>MODE DEMO</span>';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-900"></span> <span>MODE OFFLINE</span>';
       }
     }
 
@@ -2163,7 +2168,7 @@ function clearAllData() {
               <label class="block text-xs font-semibold text-slate-700 mb-1">Username</label>
               <div class="relative">
                 <i class="fa-solid fa-user absolute left-3.5 top-3 text-slate-400 text-xs"></i>
-                <input type="text" id="login-username" required placeholder="Masukkan username (Demo: guru / siswa)" class="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="text" id="login-username" required placeholder="Masukkan username (Offline: guru)" class="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
               </div>
             </div>
 
@@ -2171,11 +2176,11 @@ function clearAllData() {
               <label class="block text-xs font-semibold text-slate-700 mb-1">Password</label>
               <div class="relative">
                 <i class="fa-solid fa-key absolute left-3.5 top-3 text-slate-400 text-xs"></i>
-                <input type="password" id="login-password" required placeholder="Masukkan password (Demo: 123456)" class="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="password" id="login-password" required placeholder="Masukkan password (Offline: 123)" class="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
               </div>
             </div>
 
-            <p class="text-[10px] text-slate-500 -mt-1">Akun siswa otomatis: username <b>siswa + NIS</b> (contoh NIS 1 = <b>siswa1</b>), password default <b>123456</b>.</p>
+            <p class="text-[10px] text-slate-500 -mt-1">Mode Offline hanya menyediakan login Guru: <b>guru</b> / <b>123</b>. Untuk login Siswa, hubungkan aplikasi ke Spreadsheet terlebih dahulu.</p>
 
             <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl text-xs transition shadow-lg shadow-indigo-200 flex items-center justify-center gap-2">
               <span>Masuk Ke Sistem</span>
@@ -2192,6 +2197,18 @@ function clearAllData() {
       `;
     }
 
+    // Saat offline, isi kredensial Guru default dan nonaktifkan pilihan Siswa.
+    if (!config.scriptUrl) {
+      const roleSiswa = document.getElementById('role-btn-siswa');
+      const dbCode = document.getElementById('login-db-code');
+      const usernameInput = document.getElementById('login-username');
+      const passwordInput = document.getElementById('login-password');
+      if (roleSiswa) { roleSiswa.disabled = true; roleSiswa.classList.add('opacity-40','cursor-not-allowed'); }
+      if (dbCode) { dbCode.required = false; dbCode.disabled = true; dbCode.value = ''; dbCode.placeholder = 'Mode Offline — tidak diperlukan'; }
+      if (usernameInput) { usernameInput.value = 'guru'; usernameInput.placeholder = 'guru'; }
+      if (passwordInput) { passwordInput.value = '123'; passwordInput.placeholder = '123'; }
+    }
+
     function toggleDbCodeVisibility() {
       const input = document.getElementById('login-db-code');
       const eye = document.getElementById('login-db-eye');
@@ -2201,6 +2218,7 @@ function clearAllData() {
     }
 
     function selectLoginRole(role) {
+      if (!config.scriptUrl) role = 'guru';
       document.getElementById('login-role').value = role;
       const btnGuru = document.getElementById('role-btn-guru');
       const btnSiswa = document.getElementById('role-btn-siswa');
@@ -2220,6 +2238,29 @@ function clearAllData() {
       const username = document.getElementById('login-username').value.trim();
       const password = document.getElementById('login-password').value.trim();
       const spreadsheetId = document.getElementById('login-db-code').value.trim();
+
+      // MODE OFFLINE: otomatis dipakai jika Web App URL belum dikonfigurasi.
+      // Tidak melakukan koneksi atau request apa pun ke Spreadsheet.
+      if (!config.scriptUrl) {
+        if (role !== 'guru') {
+          showToast('Mode Offline hanya tersedia untuk login Guru. Hubungkan Spreadsheet untuk login Siswa.', 'warning');
+          selectLoginRole('guru');
+          return;
+        }
+        if (username.toLowerCase() !== 'guru' || password !== '123') {
+          showToast('Login Offline: username guru, password 123.', 'error');
+          return;
+        }
+        currentUser = { ID:'OFFLINE-GURU', Username:'guru', Nama:'Guru Offline', Role:'guru', NIP:'', Kelas:'' };
+        config.isOnline = false;
+        localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
+        localStorage.setItem(APP_SESSION_KEY, JSON.stringify(currentUser));
+        updateDbStatusBadge();
+        showToast('Masuk sebagai Guru Offline. Tidak ada koneksi ke Spreadsheet.', 'success');
+        renderAppLayout();
+        return;
+      }
+
       if (!spreadsheetId) { showToast('Masukkan Kode dari Guru terlebih dahulu.', 'warning'); return; }
       config.spreadsheetId = spreadsheetId;
       config.isOnline = true;
