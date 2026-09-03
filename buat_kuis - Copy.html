@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>EduSmart LMS - Buat Kuis</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+<style>
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.custom-scrollbar::-webkit-scrollbar{width:6px}.custom-scrollbar::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:10px}.touch{min-height:44px}
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+<header class="bg-indigo-700 text-white sticky top-0 z-40 shadow-md">
+ <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+  <div class="flex items-center gap-3"><div class="bg-white text-indigo-700 p-2 rounded-xl w-10 h-10 flex items-center justify-center shadow"><i class="fa-solid fa-graduation-cap"></i></div><div><h1 class="font-bold text-lg leading-tight">EduSmart LMS</h1><p class="text-xs text-indigo-200">Pembuat Kuis • Guru Kelas 5</p></div></div>
+  <div class="flex items-center gap-2"><span id="dbBadge" class="px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-400 text-slate-900"><i class="fa-solid fa-circle mr-1"></i> MEMERIKSA</span><a href="https://aistudio.google.com/" target="_blank" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-2 rounded-lg text-xs font-medium"><i class="fa-solid fa-key mr-1"></i> AI Studio</a></div>
+ </div>
+</header>
+<div class="max-w-7xl mx-auto flex min-h-[calc(100vh-4rem)]">
+<aside class="hidden lg:flex w-64 bg-white border-r border-slate-200 p-4 flex-col">
+ <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Menu Guru</div>
+ <nav class="space-y-1">
+  <a href="./index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"><i class="fa-solid fa-house w-5"></i> Dashboard</a>
+  <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-indigo-50 text-indigo-700 font-semibold text-sm"><i class="fa-solid fa-pen-to-square w-5"></i> Buat Kuis</div>
+  <a href="./kuis.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"><i class="fa-solid fa-laptop-code w-5"></i> Kuis Siswa</a>
+ </nav>
+ <div class="mt-auto pt-4 border-t border-slate-200"><div class="bg-indigo-50 p-3 rounded-xl border border-indigo-100"><div class="text-xs font-semibold text-indigo-900"><i class="fa-solid fa-database mr-1"></i> Database Aktif</div><div id="dbName" class="text-[11px] text-slate-600 mt-1 break-words">Membaca konfigurasi...</div></div></div>
+</aside>
+<main class="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+ <div class="max-w-5xl mx-auto space-y-5">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h2 class="text-2xl font-bold text-slate-900">Buat Kuis</h2><p class="text-sm text-slate-500">Khusus Guru Kelas 5 • tersambung otomatis ke database Dashboard Guru.</p></div><button onclick="refreshDatabase()" class="touch px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold hover:bg-slate-50"><i class="fa-solid fa-rotate mr-1"></i> Muat Ulang Data</button></div>
+  <div id="statusCard" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4"><div class="flex gap-3"><div id="statusIcon" class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><i class="fa-solid fa-plug"></i></div><div class="flex-1"><div class="flex justify-between gap-2"><h3 class="font-semibold text-slate-900">Koneksi Database</h3><span id="statusText" class="text-xs font-semibold text-amber-600">Memeriksa...</span></div><p id="statusDetail" class="text-xs text-slate-500 mt-1">Spreadsheet ID dan URL Web App dibaca dari localStorage.</p></div></div></div>
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5"><div class="flex items-center gap-2 mb-4"><i class="fa-solid fa-circle-info text-indigo-600"></i><h3 class="font-bold text-slate-900">Identitas Kuis</h3></div>
+   <div class="grid md:grid-cols-2 gap-4">
+    <div><label class="block text-xs font-semibold mb-1">Judul Kuis</label><input id="quizTitle" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none" placeholder="Contoh: Penilaian Harian Matematika Bab Pecahan"></div>
+    <div><label class="block text-xs font-semibold mb-1">Mata Pelajaran</label><select id="subject" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none"><option value="">Memuat mapel...</option></select></div>
+    <div><label class="block text-xs font-semibold mb-1">Kelas</label><select id="className" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none"><option value="">Memuat kelas 5...</option></select></div>
+    <div><label class="block text-xs font-semibold mb-1">Durasi Pengerjaan (menit)</label><input id="duration" type="number" min="1" value="30" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none"></div><div class="md:col-span-2"><label class="block text-xs font-semibold mb-1">Link Materi Sebelum Kuis (opsional)</label><input id="material" type="url" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none" placeholder="https://..."><p class="text-[11px] text-slate-400 mt-1">Siswa akan melihat tombol Pelajari Materi sebelum mulai mengerjakan.</p></div>
+    <div><label class="block text-xs font-semibold mb-1">Mulai Akses (opsional)</label><input id="startAt" type="datetime-local" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none"></div>
+    <div><label class="block text-xs font-semibold mb-1">Selesai Akses (opsional)</label><input id="endAt" type="datetime-local" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none"></div>
+   </div>
+  </section>
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5"><div class="flex items-center justify-between gap-3 mb-4"><div><h3 class="font-bold text-slate-900"><i class="fa-solid fa-wand-magic-sparkles text-orange-500 mr-1"></i> Buat Soal dengan Gemini</h3><p class="text-xs text-slate-500 mt-1">Format keluaran mengikuti kolom database <b>SoalKuis</b>.</p></div></div>
+   <div class="grid md:grid-cols-2 gap-4">
+    <div class="md:col-span-2"><label class="block text-xs font-semibold mb-1">API Key Gemini</label><div class="flex gap-2"><input id="geminiKey" type="password" class="touch flex-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none font-mono" placeholder="Masukkan API Key dari Google AI Studio"><button onclick="saveKey()" class="px-4 rounded-xl bg-slate-900 text-white text-xs font-bold">Simpan</button></div><p class="text-[11px] text-slate-400 mt-1">Tidak ada password aplikasi. Kunci hanya disimpan di localStorage browser ini.</p></div>
+    <div class="md:col-span-2"><label class="block text-xs font-semibold mb-1">Topik / Materi</label><input id="topic" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none" placeholder="Contoh: Pecahan, KPK dan FPB, Ekosistem, dll."></div>
+    <div><label class="block text-xs font-semibold mb-1">Jumlah Pilihan Ganda</label><input id="numPg" type="number" min="0" max="50" value="10" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none"></div>
+    <div><label class="block text-xs font-semibold mb-1">Jumlah PG Kompleks</label><input id="numPgk" type="number" min="0" max="50" value="0" class="touch w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none"></div>
+   </div>
+   <button id="generateBtn" onclick="generateAI()" class="touch w-full mt-4 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold text-sm"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i> Buat Soal dengan AI</button>
+  </section>
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5"><div class="flex items-center justify-between mb-4"><h3 class="font-bold text-slate-900">Daftar Soal <span id="count" class="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">0</span></h3><button onclick="addQuestion()" class="touch px-4 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold"><i class="fa-solid fa-plus mr-1"></i> Tambah Soal</button></div><div id="questions" class="space-y-4"></div></section>
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5"><h3 class="font-bold text-slate-900 mb-3">Format Database</h3><div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50"><tr><th class="text-left p-2">Sheet</th><th class="text-left p-2">Kolom</th></tr></thead><tbody><tr class="border-t"><td class="p-2 font-semibold">Kuis</td><td class="p-2">ID, Judul, KodeMapel, Kelas, JumlahSoal, DurasiMenit</td></tr><tr class="border-t"><td class="p-2 font-semibold">SoalKuis</td><td class="p-2">ID, KuisID, Pertanyaan, OpsiA, OpsiB, OpsiC, OpsiD, KunciJawaban</td></tr></tbody></table></div></section>
+  <div class="flex flex-col sm:flex-row gap-3 pb-8"><button id="sendBtn" onclick="sendToDatabase()" class="touch flex-1 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-bold"><i class="fa-solid fa-cloud-arrow-up mr-2"></i> Kirim ke Database</button><button onclick="clearAll()" class="touch sm:w-40 bg-white border border-red-200 text-red-600 rounded-xl font-bold">Kosongkan</button></div>
+ </div>
+</main></div>
+<div id="toast" class="fixed bottom-5 right-5 z-50 hidden max-w-sm bg-slate-900 text-white px-4 py-3 rounded-xl text-sm shadow-xl"></div>
+<script>
+const CONFIG_KEY='edusmart_config',DB_KEY='edusmart_spreadsheet_id',API_KEY='edusmart_script_url',GEMINI_KEY='edusmart_gemini_api_key';
+let config={},subjects=[],students=[],questions=[];
+function $(id){return document.getElementById(id)}
+function toast(msg){$('toast').textContent=msg;$('toast').classList.remove('hidden');clearTimeout(window._toast);window._toast=setTimeout(()=>$('toast').classList.add('hidden'),3500)}
+function loadConfig(){try{config=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')}catch(e){config={}};config.spreadsheetId=(new URLSearchParams(location.search).get('db')||localStorage.getItem(DB_KEY)||config.spreadsheetId||'').trim();config.scriptUrl=(new URLSearchParams(location.search).get('api')||localStorage.getItem(API_KEY)||config.scriptUrl||'').trim()}
+function normalizeUrl(u){u=String(u||'').trim();return u.endsWith('/')?u.slice(0,-1):u}
+async function rpc(action,body={}){if(!config.scriptUrl)throw Error('URL Web App Apps Script belum tersedia di localStorage.');if(!config.spreadsheetId)throw Error('Spreadsheet ID belum tersedia di localStorage.');const p=new URLSearchParams({action,spreadsheetId:config.spreadsheetId});Object.entries(body).forEach(([k,v])=>p.set(k,typeof v==='object'?JSON.stringify(v):String(v??'')));const c=new AbortController(),t=setTimeout(()=>c.abort(),20000);try{const r=await fetch(normalizeUrl(config.scriptUrl),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString(),mode:'cors',credentials:'omit',cache:'no-store',signal:c.signal});const raw=await r.text();if(!r.ok)throw Error('HTTP '+r.status);let j;try{j=JSON.parse(raw)}catch(e){throw Error('Respons API bukan JSON. Pastikan URL Web App /exec benar dan deployment aktif.')}return j}finally{clearTimeout(t)}}
+function setStatus(ok,msg){$('dbBadge').innerHTML=ok?'<i class="fa-solid fa-circle mr-1"></i> ONLINE':'<i class="fa-solid fa-circle mr-1"></i> OFFLINE';$('dbBadge').className='px-3 py-1.5 rounded-full text-xs font-semibold '+(ok?'bg-emerald-400 text-slate-900':'bg-red-400 text-white');$('statusText').textContent=ok?'TERHUBUNG':'GAGAL';$('statusText').className='text-xs font-semibold '+(ok?'text-emerald-600':'text-red-600');$('statusDetail').textContent=msg}
+function classIsFive(v){const s=String(v||'').trim().toLowerCase();return /(^|[^0-9])5([^0-9]|$)|kelas\s*v|\bv\b/.test(s)}
+function populate(){const mapel=subjects.filter(x=>String(x.Status||'Aktif').toLowerCase()!=='nonaktif'&&(!x.Kelas||classIsFive(x.Kelas)));$('subject').innerHTML='<option value="">Pilih mata pelajaran</option>'+mapel.map(x=>`<option value="${esc(x.Kode||'')}">${esc(x.NamaMapel||x.Kode||'')}</option>`).join('');const cs=[...new Set(students.map(x=>String(x.Kelas||'').trim()).filter(classIsFive))];$('className').innerHTML=(cs.length?cs:['Kelas 5']).map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function refreshDatabase(){loadConfig();$('dbName').textContent=config.spreadsheetId||'Spreadsheet ID tidak ditemukan';if(!config.spreadsheetId||!config.scriptUrl){setStatus(false,'Buka Dashboard Guru → Setting Database dan pastikan Spreadsheet ID serta URL Web App tersimpan.');return}try{setStatus(true,'Mengambil MasterMapel dan Siswa dari database...');const [a,b,c]=await Promise.all([rpc('getSubjects'),rpc('getStudents'),rpc('quizGetConfig')]);subjects=a.data||[];students=b.data||[];populate();$('dbName').textContent=(c.data&&c.data.NamaDatabase)||config.spreadsheetId;setStatus(true,'Database siap. Mapel dan kelas 5 berhasil dibaca dari Spreadsheet.')}catch(e){setStatus(false,e.name==='AbortError'?'Koneksi timeout 20 detik.':e.message);toast(e.message)}}
+async function rpc(action,body={}){if(!config.scriptUrl||!config.spreadsheetId)throw Error('Database belum terhubung. Buka Dashboard Guru → Setup Database.');const p=new URLSearchParams({action,spreadsheetId:config.spreadsheetId});Object.entries(body).forEach(([k,v])=>p.set(k,typeof v==='object'?JSON.stringify(v):String(v??'')));const c=new AbortController(),t=setTimeout(()=>c.abort(),20000);try{const r=await fetch(normalizeUrl(config.scriptUrl),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString(),signal:c.signal});const raw=await r.text();let j;try{j=JSON.parse(raw)}catch(e){throw Error('Respons API bukan JSON. Pastikan deployment /exec sudah diperbarui.')}return j}finally{clearTimeout(t)}}
+function saveKey(){const k=$('geminiKey').value.trim();if(k)localStorage.setItem(GEMINI_KEY,k);else localStorage.removeItem(GEMINI_KEY);toast(k?'API Key disimpan di browser.':'API Key dihapus.')}
+function addQuestion(data={}){questions.push(Object.assign({id:Date.now()+Math.random(),tipe:'PG',pertanyaan:'',pilihanA:'',pilihanB:'',pilihanC:'',pilihanD:'',jawaban:''},data));render()}
+function update(i,k,v){questions[i][k]=v}
+function removeQ(i){questions.splice(i,1);render()}
+function render(){ $('count').textContent=questions.length; $('questions').innerHTML=questions.map((q,i)=>`<div class="border border-slate-200 rounded-2xl p-4 bg-slate-50"><div class="flex items-center justify-between mb-3"><span class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg">Soal ${i+1}</span><button onclick="removeQ(${i})" class="text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button></div><textarea onchange="update(${i},'pertanyaan',this.value)" class="w-full min-h-24 px-3 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm" placeholder="Tulis pertanyaan...">${esc(q.pertanyaan)}</textarea><div class="grid md:grid-cols-2 gap-2 mt-3">${['A','B','C','D'].map(k=>`<input onchange="update(${i},'pilihan${k}',this.value)" value="${esc(q['pilihan'+k])}" class="touch px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs" placeholder="Opsi ${k}">`).join('')}</div><div class="mt-3"><label class="text-xs font-semibold">Kunci Jawaban</label><select onchange="update(${i},'jawaban',this.value)" class="touch w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs"><option value="">Pilih kunci</option>${['A','B','C','D'].map(k=>`<option ${q.jawaban===k?'selected':''}>${k}</option>`).join('')}</select></div></div>`).join('')}
+async function generateAI(){
+  const key=$('geminiKey').value.trim()||localStorage.getItem(GEMINI_KEY)||'';
+  if(!key){toast('Masukkan API Key Gemini dari Google AI Studio.');return}
+  const topic=$('topic').value.trim(),subjectCode=$('subject').value;
+  const subjectName=$('subject').selectedOptions[0]?.textContent||subjectCode;
+  const cls=$('className').value;
+  if(!topic||!subjectCode||!cls){toast('Lengkapi topik, mapel, dan kelas.');return}
+  const n=Math.max(0,Number($('numPg').value)||0),pgk=Math.max(0,Number($('numPgk').value)||0);
+  if(!n&&!pgk){toast('Jumlah soal harus lebih dari 0.');return}
+
+  const btn=$('generateBtn');
+  btn.disabled=true;
+  btn.innerHTML='<i class="fa-solid fa-spinner fa-spin mr-2"></i> Gemini sedang membuat soal...';
+
+  // DISAMAKAN DENGAN FILE REFERENSI pembuat_soal.html
+  const apiUrl='https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key='+encodeURIComponent(key);
+  const systemPrompt='Anda adalah asisten pembuatan kuis kurikulum SD di Indonesia kelas 4-6. Anda harus selalu menjawab dalam bentuk format JSON terstruktur yang valid secara mutlak.';
+  const userPrompt=`
+    Buatkan soal kuis mata pelajaran "${subjectName}" untuk tingkat "${cls}" mengenai topik materi "${topic}".
+    Jumlah soal yang saya minta adalah:
+    - Pilihan Ganda (PG): ${n} soal
+    - Pilihan Ganda Kompleks (PGK): ${pgk} soal
+    - Menjodohkan: 0 soal
+    - Isian Singkat: 0 soal
+
+    Aturan Format Output JSON Kuis:
+    Hasilkan sebuah array objek di mana setiap objek merepresentasikan butir soal dengan properti berikut:
+    - tipe: pilih salah satu dari ["PG", "PGK"]
+    - pertanyaan: teks instruksi/soal
+    - pilihanA: teks opsi A
+    - pilihanB: teks opsi B
+    - pilihanC: teks opsi C
+    - pilihanD: teks opsi D
+    - jawaban:
+      - Untuk PG: "A" atau "B" atau "C" atau "D"
+      - Untuk PGK: kombinasi pilihan benar dipisah titik koma, misalnya "A;C"
+    - kiri: isi array kosong []
+    - jodohIndex: isi array kosong []
+
+    Pastikan jumlah soal sesuai permintaan.
+    Pastikan semua soal memiliki empat pilihan A, B, C, D.
+    Pastikan jawaban benar benar-benar sesuai dengan opsi yang diberikan.
+    Pastikan format JSON yang Anda berikan adalah murni valid dan bisa diparsing menggunakan JSON.parse di JavaScript tanpa tambahan kata-kata pengantar.
+  `;
+
+  const payload={
+    contents:[{parts:[{text:userPrompt}]}],
+    generationConfig:{
+      responseMimeType:'application/json',
+      responseSchema:{
+        type:'ARRAY',
+        items:{
+          type:'OBJECT',
+          properties:{
+            tipe:{type:'STRING'},
+            pertanyaan:{type:'STRING'},
+            pilihanA:{type:'STRING'},
+            pilihanB:{type:'STRING'},
+            pilihanC:{type:'STRING'},
+            pilihanD:{type:'STRING'},
+            jawaban:{type:'STRING'},
+            kiri:{type:'ARRAY',items:{type:'STRING'}},
+            jodohIndex:{type:'ARRAY',items:{type:'STRING'}}
+          },
+          required:['tipe','pertanyaan','jawaban']
+        }
+      }
+    },
+    systemInstruction:{parts:[{text:systemPrompt}]}
+  };
+
+  try{
+    const response=await fetch(apiUrl,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    const raw=await response.text();
+    if(!response.ok){
+      let detail='';
+      try{const err=JSON.parse(raw);detail=err?.error?.message||''}catch(_){ }
+      throw new Error(detail||('Gemini HTTP '+response.status));
+    }
+
+    const result=JSON.parse(raw);
+    const jsonText=result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if(!jsonText)throw new Error('Respons Gemini tidak berisi soal.');
+
+    const parsedQuestions=JSON.parse(jsonText);
+    if(!Array.isArray(parsedQuestions)||!parsedQuestions.length)throw new Error('Gemini tidak mengembalikan daftar soal.');
+
+    parsedQuestions.forEach(x=>addQuestion({
+      tipe:x.tipe||'PG',
+      pertanyaan:x.pertanyaan||'',
+      pilihanA:x.pilihanA||'',
+      pilihanB:x.pilihanB||'',
+      pilihanC:x.pilihanC||'',
+      pilihanD:x.pilihanD||'',
+      jawaban:x.jawaban||''
+    }));
+
+    toast('Soal berhasil dibuat oleh Gemini.');
+  }catch(e){
+    console.error(e);
+    toast('Gagal membuat soal: '+e.message);
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML='<i class="fa-solid fa-wand-magic-sparkles mr-2"></i> Buat Soal dengan AI';
+  }
+}
+
+function buildIds(){const stamp=Date.now();const quizId='KUIS-'+stamp;return {quizId,quiz:{ID:quizId,Judul:$('quizTitle').value.trim(),KodeMapel:$('subject').value,Kelas:$('className').value,JumlahSoal:questions.length,DurasiMenit:Number($('duration').value)||30},items:questions.map((q,i)=>({ID:'SOAL-'+stamp+'-'+(i+1),KuisID:quizId,Pertanyaan:q.pertanyaan,OpsiA:q.pilihanA,OpsiB:q.pilihanB,OpsiC:q.pilihanC,OpsiD:q.pilihanD,KunciJawaban:q.jawaban}))}}
+async function sendToDatabase(){const b=buildIds();b.quiz.LinkMateri=String(document.getElementById('material')?.value||'').trim();if(!b.quiz.Judul||!b.quiz.KodeMapel||!b.quiz.Kelas||!questions.length){toast('Lengkapi identitas kuis dan minimal satu soal.');return}if(b.quiz.LinkMateri&&!/^https?:\/\//i.test(b.quiz.LinkMateri)){toast('Link materi harus diawali http:// atau https://.');return}const btn=document.getElementById('sendBtn');btn.disabled=true;btn.innerHTML='<i class="fa-solid fa-spinner fa-spin mr-2"></i>Mengirim ke database...';try{const r=await rpc('saveQuizBundle',{quiz:b.quiz,questions:b.items});if(r.success){toast(r.message||'Kuis berhasil dikirim ke database.');questions=[];render();document.getElementById('quizTitle').value='';document.getElementById('material').value=''}else toast(r.message||'Gagal menyimpan kuis.')}catch(e){toast('Gagal mengirim: '+e.message)}finally{btn.disabled=false;btn.innerHTML='<i class="fa-solid fa-cloud-arrow-up mr-2"></i> Kirim ke Database'}}
+function clearAll(){if(confirm('Kosongkan semua soal?')){questions=[];render()}}
+window.addEventListener('DOMContentLoaded',()=>{loadConfig();$('geminiKey').value=localStorage.getItem(GEMINI_KEY)||'';refreshDatabase();render()});
+</script></body></html>
