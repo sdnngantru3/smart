@@ -1917,6 +1917,19 @@ function clearAllData() {
       return normalized;
     }
 
+    function speakDatabaseStatus(message) {
+      try {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(String(message || ''));
+          u.lang = 'id-ID';
+          u.rate = 0.95;
+          u.pitch = 1;
+          window.speechSynthesis.speak(u);
+        }
+      } catch (e) {}
+    }
+
     async function apiCall(action, params = {}, body = null) {
       // GitHub Pages/local HTML: gunakan HTTPS fetch ke Apps Script Web App.
       // Tidak menggunakan google.script.run karena file ini berjalan di browser biasa.
@@ -1937,6 +1950,7 @@ function clearAllData() {
       ];
       const silentRead = silentReadActions.indexOf(String(action)) >= 0;
       if (!silentRead) showLoading(true);
+      let timeoutRetryUsed = false;
       try {
         const scriptUrl = getConfiguredAppsScriptUrl();
         if (!scriptUrl) {
@@ -1954,22 +1968,37 @@ function clearAllData() {
           const v = payload[k];
           form.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v == null ? '' : v));
         });
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 20000);
+        const doFetch = async () => {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 20000);
+          try {
+            return await fetch(scriptUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: form.toString(),
+              mode: 'cors',
+              credentials: 'omit',
+              cache: 'no-store',
+              redirect: 'follow',
+              signal: controller.signal
+            });
+          } finally {
+            clearTimeout(timeout);
+          }
+        };
+
         let response;
         try {
-          response = await fetch(scriptUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: form.toString(),
-            mode: 'cors',
-            credentials: 'omit',
-            cache: 'no-store',
-            redirect: 'follow',
-            signal: controller.signal
-          });
-        } finally {
-          clearTimeout(timeout);
+          response = await doFetch();
+        } catch (fetchErr) {
+          if (fetchErr && fetchErr.name === 'AbortError' && silentRead && !timeoutRetryUsed) {
+            timeoutRetryUsed = true;
+            speakDatabaseStatus('Data belum ada di database, saya akan coba refresh ulang.');
+            await new Promise(r => setTimeout(r, 1200));
+            response = await doFetch();
+          } else {
+            throw fetchErr;
+          }
         }
 
         const text = await response.text();
@@ -1995,10 +2024,19 @@ function clearAllData() {
         return json;
       } catch (err) {
         if (!silentRead) showLoading(false);
-        const msg = err && err.name === 'AbortError'
-          ? 'Koneksi ke Apps Script timeout (20 detik). Periksa URL Web App /exec dan deployment.'
+        const isTimeout = err && err.name === 'AbortError';
+        const msg = isTimeout
+          ? 'Koneksi ke Apps Script timeout (20 detik).'
           : (err && err.message ? err.message : String(err));
-        showToast('Gagal menghubungi Google Apps Script API: ' + msg, 'error');
+
+        if (silentRead && isTimeout) {
+          speakDatabaseStatus('Data tidak ditemukan di database.');
+          showToast('Data tidak ditemukan di database.', 'info');
+        } else if (silentRead) {
+          showToast('Data tidak ditemukan di database.', 'info');
+        } else {
+          showToast('Gagal menghubungi Google Apps Script API: ' + msg, 'error');
+        }
         return { success:false, message:msg, data:null };
       }
     }
@@ -3558,19 +3596,16 @@ function clearAllData() {
       container.innerHTML = `
         <div class="space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><h2 class="text-xl font-bold text-slate-800">Input Absensi Siswa</h2><div class="flex gap-2"><button onclick="openExcelImportModal('absensi')" class="bg-blue-600 text-white text-xs px-3 py-2 rounded-xl font-bold"><i class="fa-solid fa-file-import"></i> Import Excel</button><button onclick="downloadExcelTemplate('absensi')" class="bg-slate-700 text-white text-xs px-3 py-2 rounded-xl font-bold"><i class="fa-solid fa-file-arrow-down"></i> Template</button></div></div>
-          <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div>
               <label class="block font-semibold mb-1">Tanggal</label>
               <input type="date" id="abs-date" value="${new Date().toISOString().split('T')[0]}" class="w-full p-2 border rounded-lg">
             </div>
             <div>
               <label class="block font-semibold mb-1">Kelas</label>
-              <select id="abs-kelas" class="w-full p-2 border rounded-lg"><option value="VII-A">VII-A</option></select>
+              <select id="abs-kelas" class="w-full p-2 border rounded-lg"><option value="">Memuat kelas...</option></select>
             </div>
-            <div>
-              <label class="block font-semibold mb-1">Mata Pelajaran</label>
-              <select id="abs-mapel" class="w-full p-2 border rounded-lg"><option value="MTK-7">Matematika (MTK-7)</option></select>
-            </div>
+
           </div>
 
           <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
@@ -3589,7 +3624,20 @@ function clearAllData() {
 
       const res = await apiCall('getStudents');
       const students = res.data || [];
-      document.getElementById('tbody-absensi-input').innerHTML = students.map(s => `
+      window.absensiStudents = students;
+      const kelasSelect = document.getElementById('abs-kelas');
+      const kelasList = [...new Set(students.map(s => String(s.Kelas || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'id', {numeric:true}));
+      kelasSelect.innerHTML = kelasList.length ? kelasList.map(k => `<option value="${k.replace(/"/g,'&quot;')}">${k}</option>`).join('') : '<option value="">Tidak ada kelas</option>';
+      kelasSelect.onchange = () => renderAbsensiStudentsByClass();
+      renderAbsensiStudentsByClass();
+    }
+
+    function renderAbsensiStudentsByClass() {
+      const kelas = document.getElementById('abs-kelas')?.value || '';
+      const students = (window.absensiStudents || []).filter(s => String(s.Kelas || '').trim() === kelas);
+      const tbody = document.getElementById('tbody-absensi-input');
+      if (!tbody) return;
+      tbody.innerHTML = students.length ? students.map(s => `
         <tr class="border-b">
           <td class="p-3 font-semibold">${s.NIS}</td>
           <td class="p-3">${s.Nama}</td>
@@ -3602,20 +3650,18 @@ function clearAllData() {
             </select>
           </td>
         </tr>
-      `).join('');
+      `).join('') : '<tr><td colspan="3" class="p-3 text-center text-slate-500">Tidak ada siswa pada kelas ini.</td></tr>';
     }
 
     async function saveAbsensiData() {
       const date = document.getElementById('abs-date').value;
       const kelas = document.getElementById('abs-kelas').value;
-      const mapel = document.getElementById('abs-mapel').value;
       const selects = document.querySelectorAll('.abs-status-select');
 
       const records = Array.from(selects).map((sel, idx) => ({
         ID: `ABS-${Date.now()}-${idx}`,
         Tanggal: date,
         Kelas: kelas,
-        KodeMapel: mapel,
         NIS: sel.dataset.nis,
         NamaSiswa: sel.dataset.nama,
         StatusHadir: sel.value
