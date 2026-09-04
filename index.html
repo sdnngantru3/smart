@@ -2634,9 +2634,19 @@ function clearAllData() {
       }
     }
 
-    // URL Web App tetap bisa diisi manual untuk database baru/recovery.
+    // URL Web App dan Spreadsheet ID disimpan otomatis ke localStorage
+    // segera saat pengguna mengetik atau menempelkan nilainya.
     document.addEventListener('input', function(e) {
-      if (e.target && e.target.id === 'cfg-script-url') {
+      if (!e.target) return;
+
+      if (e.target.id === 'cfg-sheet-id' || e.target.id === 'login-db-code') {
+        const id = normalizeGuruSpreadsheetId(e.target.value || '');
+        if (id) {
+          persistGuruSpreadsheetId(id);
+        }
+      }
+
+      if (e.target.id === 'cfg-script-url') {
         const url = normalizeAppsScriptUrl(e.target.value || '');
         if (url) {
           config.scriptUrl = url;
@@ -2644,6 +2654,29 @@ function clearAllData() {
           localStorage.setItem(LEGACY_SCRIPT_URL_KEY, url);
         }
       }
+    });
+
+    document.addEventListener('change', function(e) {
+      if (!e.target) return;
+      if (e.target.id === 'cfg-sheet-id' || e.target.id === 'login-db-code') {
+        const id = normalizeGuruSpreadsheetId(e.target.value || '');
+        if (id) {
+          persistGuruSpreadsheetId(id);
+        }
+      }
+    });
+
+    document.addEventListener('paste', function(e) {
+      const target = e.target;
+      if (!target || (target.id !== 'cfg-sheet-id' && target.id !== 'login-db-code')) return;
+      setTimeout(function() {
+        const id = normalizeGuruSpreadsheetId(target.value || '');
+        if (!id) return;
+        target.value = id;
+        config.spreadsheetId = id;
+        localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
+        localStorage.setItem(LEGACY_SPREADSHEET_KEY, id);
+      }, 0);
     });
 
     async function saveConfiguration() {
@@ -2798,12 +2831,9 @@ function clearAllData() {
     // APPSCRIPT_URL dicari otomatis melalui Config/bootstrap.
     // ============================================================
     function saveGuruSpreadsheetId(spreadsheetId, silent = false) {
-      const id = String(spreadsheetId || '').trim();
+      const id = persistGuruSpreadsheetId(spreadsheetId);
       if (!id) return { success:false, message:'Kode Guru / Spreadsheet ID kosong.' };
-      config.spreadsheetId = id;
-      localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
-      localStorage.setItem(LEGACY_SPREADSHEET_KEY, id);
-      if (!silent) showToast('✅ Spreadsheet ID tersimpan.', 'success');
+      if (!silent) showToast('✅ Spreadsheet ID tersimpan di browser.', 'success');
       return { success:true, data:{spreadsheetId:id} };
     }
 
@@ -2815,6 +2845,31 @@ function clearAllData() {
         id = id.substring(pos + marker.length).split('/')[0].split('?')[0].split('#')[0];
       }
       return id.trim();
+    }
+
+    // Persistent Kode Guru: simpan ID secara terpisah agar tidak tertimpa config lama.
+    function getSavedGuruSpreadsheetId() {
+      try {
+        const storedConfig = JSON.parse(localStorage.getItem(APP_CONFIG_KEY) || '{}') || {};
+        return normalizeGuruSpreadsheetId(storedConfig.spreadsheetId || '') ||
+               normalizeGuruSpreadsheetId(localStorage.getItem(LEGACY_SPREADSHEET_KEY) || '') || '';
+      } catch (e) {
+        return normalizeGuruSpreadsheetId(localStorage.getItem(LEGACY_SPREADSHEET_KEY) || '');
+      }
+    }
+
+    function persistGuruSpreadsheetId(spreadsheetId) {
+      const id = normalizeGuruSpreadsheetId(spreadsheetId);
+      if (!id) return '';
+      try {
+        let latest = {};
+        try { latest = JSON.parse(localStorage.getItem(APP_CONFIG_KEY) || '{}') || {}; } catch (e) {}
+        latest.spreadsheetId = id;
+        localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(latest));
+        localStorage.setItem(LEGACY_SPREADSHEET_KEY, id);
+        config.spreadsheetId = id;
+      } catch (e) {}
+      return id;
     }
 
     function toggleSpreadsheetIdVisibility() {
@@ -2829,6 +2884,10 @@ function clearAllData() {
     }
 
     function renderLoginPage() {
+      // Setelah logout, ID database terakhir selalu dipulihkan dari localStorage.
+      const savedSpreadsheetId = getSavedGuruSpreadsheetId();
+      if (savedSpreadsheetId) persistGuruSpreadsheetId(savedSpreadsheetId);
+
       document.getElementById('header-user-info').classList.add('hidden');
       document.getElementById('sidebar').classList.add('hidden');
 
@@ -2859,7 +2918,7 @@ function clearAllData() {
               <label class="block text-xs font-semibold text-slate-700 mb-1">Kode Guru (Spreadsheet ID)</label>
               <div class="relative">
                 <i class="fa-solid fa-key absolute left-3.5 top-3 text-slate-400 text-xs"></i>
-                <input type="password" id="login-db-code" value="" required placeholder="Paste Spreadsheet ID dari Guru di sini" autocomplete="off" spellcheck="false" class="w-full pl-9 pr-16 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="password" id="login-db-code" value="${savedSpreadsheetId}" required placeholder="Paste Spreadsheet ID dari Guru di sini" autocomplete="off" spellcheck="false" class="w-full pl-9 pr-16 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
                 <button type="button" onclick="toggleSpreadsheetIdVisibility()" id="toggle-spreadsheet-id" class="absolute right-2 top-2 text-slate-400 hover:text-indigo-600 p-1" title="Tampilkan Spreadsheet ID" aria-label="Tampilkan Spreadsheet ID"><i class="fa-solid fa-eye"></i></button>
               </div>
               <p id="login-db-hint" class="text-[10px] text-slate-500 mt-1">Paste Spreadsheet ID dari Guru sekali. ID langsung disimpan.</p>
@@ -2986,7 +3045,13 @@ function clearAllData() {
       if (config.mode !== 'online' || !config.scriptUrl) {
         if (role !== 'guru') {
           showToast('Mode Offline hanya tersedia untuk login Guru. Hubungkan Spreadsheet untuk login Siswa.', 'warning');
-          selectLoginRole('guru');
+          const loginDbInput = document.getElementById('login-db-code');
+      if (loginDbInput && savedSpreadsheetId) {
+        loginDbInput.value = savedSpreadsheetId;
+        persistGuruSpreadsheetId(savedSpreadsheetId);
+      }
+
+      selectLoginRole('guru');
           return;
         }
         if (username.toLowerCase() !== 'guru' || password !== '11223344') {
@@ -3036,6 +3101,17 @@ function clearAllData() {
     }
 
     function logout() {
+      // Simpan kembali Spreadsheet ID sebelum menghapus SESI.
+      // Yang dihapus hanya APP_SESSION_KEY; konfigurasi database tetap tersimpan.
+      try {
+        const currentId = normalizeGuruSpreadsheetId(
+          document.getElementById('login-db-code')?.value ||
+          config.spreadsheetId ||
+          localStorage.getItem(LEGACY_SPREADSHEET_KEY) || ''
+        );
+        if (currentId) persistGuruSpreadsheetId(currentId);
+      } catch (e) {}
+
       currentUser = null;
       localStorage.removeItem(APP_SESSION_KEY);
       showToast('Anda telah keluar dari aplikasi.', 'info');
