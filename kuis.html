@@ -14,30 +14,87 @@
 <div id="examView" class="hidden exam-shell"><header class="h-16 bg-indigo-700 text-white shadow-md"><div class="max-w-7xl mx-auto h-full px-3 sm:px-5 flex items-center justify-between gap-3"><div class="min-w-0"><h1 id="examTitle" class="font-bold truncate">Kuis</h1><p id="examStudent" class="text-[10px] text-indigo-200 truncate"></p></div><div class="flex items-center gap-2"><div id="securityBadge" class="hidden sm:flex items-center gap-1.5 bg-emerald-500 px-2.5 py-1.5 rounded-lg text-[10px] font-bold"><i class="fa-solid fa-shield-halved"></i> MODE UJIAN</div><div id="timer" class="bg-white text-indigo-700 px-3 py-2 rounded-xl text-sm font-black tabular-nums">00:00</div></div></div></header><div class="exam-scroll"><main class="max-w-7xl mx-auto p-3 sm:p-5"><div class="grid lg:grid-cols-[1fr_250px] gap-4"><section class="bg-white rounded-2xl border shadow-sm p-4 sm:p-6"><div class="flex items-center justify-between gap-3 mb-5"><div><p id="progress" class="text-xs font-semibold text-slate-500"></p><div class="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div id="progressBar" class="h-full bg-indigo-600" style="width:0%"></div></div></div><button onclick="confirmSubmit()" class="text-xs font-bold text-red-600 border border-red-200 px-3 py-2 rounded-lg">Kumpulkan</button></div><div id="questionBox"></div><div class="flex justify-between gap-3 mt-7 pt-4 border-t"><button id="prevBtn" onclick="prevQuestion()" class="px-4 py-2.5 rounded-xl border text-xs font-bold">Sebelumnya</button><button id="nextBtn" onclick="nextQuestion()" class="px-5 py-2.5 rounded-xl bg-indigo-700 text-white text-xs font-bold">Berikutnya</button></div></section><aside class="space-y-4"><div class="bg-white rounded-2xl border shadow-sm p-4"><h3 class="font-bold text-sm">Nomor Soal</h3><div id="numberGrid" class="grid grid-cols-5 gap-2 mt-3"></div><div class="text-[10px] text-slate-400 mt-3">Terjawab akan ditandai. Pindah tab/aplikasi akan dianggap pelanggaran.</div></div><div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-800"><i class="fa-solid fa-triangle-exclamation mr-1"></i><b>Mode ujian:</b> layar penuh, blokir salin/tempel, klik kanan, dan deteksi perpindahan tab.</div></aside></div></main></div></div>
 <div id="resultView" class="hidden min-h-screen p-4 sm:p-6"><div class="max-w-5xl mx-auto space-y-5"><div class="bg-white rounded-3xl shadow-xl p-6 sm:p-8 text-center"><div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl"><i class="fa-solid fa-trophy"></i></div><h2 class="text-2xl font-black mt-4">Kuis Selesai</h2><div id="resultScore" class="text-5xl font-black text-indigo-600 mt-4">0</div><p id="resultDetail" class="text-xs text-slate-500 mt-2"></p></div><div id="resultRanking" class="bg-white rounded-3xl shadow-sm border p-5"></div><div class="text-center"><button onclick="backToQuizList()" class="bg-indigo-700 text-white px-5 py-3 rounded-xl text-xs font-bold">Kembali ke Statistik Kuis</button></div></div></div>
 <script>
-const CONFIG_KEY='edusmart_config',DB_KEY='edusmart_spreadsheet_id',API_KEY='edusmart_script_url';const params=new URLSearchParams(location.search);let cfg={};try{cfg=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')}catch(e){cfg={}};const state={dbId:(params.get('db')||localStorage.getItem(DB_KEY)||cfg.spreadsheetId||'').trim(),apiUrl:(params.get('api')||cfg.scriptUrl||localStorage.getItem(API_KEY)||'').trim(),nis:(params.get('nis')||'').trim(),kelas:(params.get('kelas')||'').trim(),nama:(params.get('nama')||'').trim(),student:null,quizzes:[],questions:[],current:null,index:0,answers:{},seconds:0,timer:null,startAt:null,submitting:false,violations:0,results:[],completedQuizId:''};const $=id=>document.getElementById(id);function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function toast(m){const x=document.createElement('div');x.className='bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg text-xs mb-2';x.textContent=m;$('toast').appendChild(x);setTimeout(()=>x.remove(),3500)}function load(v,t='Memuat...'){$('loadingText').textContent=t;$('loading').classList.toggle('hidden',!v);$('loading').classList.toggle('flex',v)}function norm(u){u=String(u||'').trim();if(!u)return '';try{const x=new URL(u);x.search='';x.hash='';if(x.pathname.endsWith('/'))x.pathname=x.pathname.slice(0,-1);if(!x.pathname.endsWith('/exec'))x.pathname+='/exec';return x.href}catch(e){return ''}}async function rpc(action,body={}){const url=norm(state.apiUrl);if(!url)throw Error('URL Web App belum tersedia.');if(!state.dbId)throw Error('Spreadsheet ID belum tersedia.');const p=new URLSearchParams({action,spreadsheetId:state.dbId});Object.entries(body).forEach(([k,v])=>p.set(k,typeof v==='object'?JSON.stringify(v):String(v??'')));const c=new AbortController(),t=setTimeout(()=>c.abort(),20000);try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString(),signal:c.signal});const raw=await r.text();let j;try{j=JSON.parse(raw)}catch(e){throw Error('Respons API bukan JSON. Deployment /exec mungkin belum diperbarui.')}if(!r.ok)throw Error('HTTP '+r.status);return j}finally{clearTimeout(t)}}async function loginQuiz(){if(!state.nis){$('studentInfo').textContent='Sesi siswa tidak ditemukan. Buka Kuis dari Dashboard Siswa.';return}try{load(true,'Memverifikasi siswa...');const r=await rpc('quizLoginByNis',{nis:state.nis,kelas:state.kelas});if(!r.success)throw Error(r.message);state.student=r.data;
-      // Data soal tetap dari sheet SoalKuis melalui API. Data Kuis dibaca ulang berdasarkan POSISI KOLOM A:G
-      // agar header ganda di sheet Kuis (kolom H dst.) tidak menimpa DurasiMenit/LinkMateri.
-      let apiQ=await rpc('getInteractiveQuizData',{nis:state.student.NIS,kelas:state.student.Kelas});
-      if(!apiQ.success)throw Error(apiQ.message);
-      state.questions=(apiQ.data?.questions||[]).map(normalizeQuestionRow);
-      let directQuizzes=[];
-      try{directQuizzes=await readKuisSheetDirect();}catch(_){directQuizzes=[];}
-      if(directQuizzes.length){
-        const wanted=normalizeClass(state.student?.Kelas||state.kelas);
-        const visible=directQuizzes.filter(x=>{const kc=normalizeClass(x.Kelas);return !kc||kc==='semua'||!wanted||kc===wanted;});
-        state.quizzes=visible;
-      }else{
-        state.quizzes=(apiQ.data?.quizzes||[]).map(normalizeQuizRow);
-      }
-      // Jika API tidak mengembalikan soal karena filter kelas, ambil seluruh SoalKuis melalui API.
-      if(!state.questions.length){try{const qs=await rpc('getQuizQuestions');if(qs.success)state.questions=(qs.data||[]).map(normalizeQuestionRow)}catch(_){}}
-      // Pastikan soal benar-benar mengikuti KuisID yang sedang dipilih.
-      filterToLatestQuiz();
-      // Pulihkan jumlah soal dari SoalKuis, bukan dari kolom JumlahSoal yang mungkin tertimpa header ganda.
-      state.quizzes.forEach(q=>{q.JumlahSoal=state.questions.filter(x=>String(x.KuisID)===String(q.ID)).length});
-      await refreshQuizResults();
-      load(false);$('loginView').classList.add('hidden');$('homeView').classList.remove('hidden');$('welcome').textContent='Halo, '+state.student.Nama+'!';$('dbName').textContent=apiQ.data?.databaseName||state.dbId;renderQuizList()}catch(e){load(false);toast(e.message);$('studentInfo').textContent='Gagal memuat: '+e.message}}
+const CONFIG_KEY='edusmart_config',DB_KEY='edusmart_spreadsheet_id',API_KEY='edusmart_script_url';const params=new URLSearchParams(location.search);let cfg={};try{cfg=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')}catch(e){cfg={}};const state={dbId:(params.get('db')||localStorage.getItem(DB_KEY)||cfg.spreadsheetId||'').trim(),apiUrl:(params.get('api')||cfg.scriptUrl||localStorage.getItem(API_KEY)||'').trim(),nis:(params.get('nis')||'').trim(),kelas:(params.get('kelas')||'').trim(),nama:(params.get('nama')||'').trim(),student:null,quizzes:[],questions:[],current:null,index:0,answers:{},seconds:0,timer:null,startAt:null,submitting:false,violations:0,results:[],completedQuizId:''};const $=id=>document.getElementById(id);function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function toast(m){const x=document.createElement('div');x.className='bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg text-xs mb-2';x.textContent=m;$('toast').appendChild(x);setTimeout(()=>x.remove(),3500)}function load(v,t='Memuat...'){$('loadingText').textContent=t;$('loading').classList.toggle('hidden',!v);$('loading').classList.toggle('flex',v)}function norm(u){u=String(u||'').trim();if(!u)return '';try{const x=new URL(u);x.search='';x.hash='';if(x.pathname.endsWith('/'))x.pathname=x.pathname.slice(0,-1);if(!x.pathname.endsWith('/exec'))x.pathname+='/exec';return x.href}catch(e){return ''}}async function rpc(action,body={}){const url=norm(state.apiUrl);if(!url)throw Error('URL Web App belum tersedia.');if(!state.dbId)throw Error('Spreadsheet ID belum tersedia.');const p=new URLSearchParams({action,spreadsheetId:state.dbId});Object.entries(body).forEach(([k,v])=>p.set(k,typeof v==='object'?JSON.stringify(v):String(v??'')));const c=new AbortController(),t=setTimeout(()=>c.abort(),20000);try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString(),signal:c.signal});const raw=await r.text();let j;try{j=JSON.parse(raw)}catch(e){throw Error('Respons API bukan JSON. Deployment /exec mungkin belum diperbarui.')}if(!r.ok)throw Error('HTTP '+r.status);return j}finally{clearTimeout(t)}}async function loginQuiz(){
+  if(!state.nis){$('studentInfo').textContent='Sesi siswa tidak ditemukan. Buka Kuis dari Dashboard Siswa.';return}
+  try{
+    load(true,'Memverifikasi siswa...');
 
+    // Code.gs yang aktif mendukung quizLogin, bukan quizLoginByNis.
+    // Kredensial siswa dibentuk dari NIS + password default dari konfigurasi database.
+    const cfgRes=await rpc('quizGetConfig',{});
+    if(!cfgRes.success)throw Error(cfgRes.message||'Konfigurasi database tidak dapat dibaca.');
+    const username='siswa'+String(state.nis).trim();
+    const password=String(cfgRes.data?.DEFAULT_STUDENT_PASSWORD||'123456');
+    const r=await rpc('quizLogin',{username,password});
+    if(!r.success)throw Error(r.message||'Login siswa gagal.');
+    state.student=r.data;
+
+    // Jalur utama pengambilan kuis menggunakan action yang tersedia di Code.gs.
+    let apiQ=await rpc('getInteractiveQuizData',{nis:state.student.NIS,kelas:state.student.Kelas});
+    if(!apiQ.success)throw Error(apiQ.message||'Gagal mengambil data kuis.');
+
+    state.questions=(apiQ.data?.questions||[]).map(normalizeQuestionRow);
+
+    // Utamakan pembacaan sheet Kuis langsung bila tersedia, tetapi tetap
+    // pertahankan data API sebagai fallback agar file lokal tetap berjalan.
+    let directQuizzes=[];
+    try{directQuizzes=await readKuisSheetDirect();}catch(_){directQuizzes=[];}
+    if(directQuizzes.length){
+      const wanted=normalizeClass(state.student?.Kelas||state.kelas);
+      const visible=directQuizzes.filter(x=>{
+        const kc=normalizeClass(x.Kelas);
+        return !kc||kc==='semua'||!wanted||kc===wanted;
+      });
+      state.quizzes=visible.map(normalizeQuizRow);
+    }else{
+      state.quizzes=(apiQ.data?.quizzes||[]).map(normalizeQuizRow);
+    }
+
+    // Jika endpoint interaktif belum mengirim soal, ambil seluruh SoalKuis
+    // menggunakan action getQuizQuestions yang memang tersedia di Code.gs.
+    if(!state.questions.length){
+      try{
+        const qs=await rpc('getQuizQuestions',{});
+        if(qs.success)state.questions=(qs.data||[]).map(normalizeQuestionRow);
+      }catch(_){}
+    }
+
+    // Jika data Kuis interaktif kosong, fallback penuh ke Kuis + SoalKuis.
+    if(!state.quizzes.length){
+      try{
+        const [a,b]=await Promise.all([rpc('getQuizzes',{}),rpc('getQuizQuestions',{})]);
+        if(a.success&&b.success){
+          const wanted=normalizeClass(state.student?.Kelas||state.kelas);
+          const allQuizzes=(a.data||[]).map(normalizeQuizRow);
+          const visible=allQuizzes.filter(x=>{
+            const kc=normalizeClass(x.Kelas);
+            return !kc||kc==='semua'||!wanted||kc===wanted;
+          });
+          state.quizzes=visible;
+          state.questions=(b.data||[]).map(normalizeQuestionRow);
+        }
+      }catch(_){}
+    }
+
+    // Pastikan kuis yang dipilih memiliki soal dari KuisID yang sama.
+    filterToLatestQuiz();
+    state.quizzes.forEach(q=>{
+      q.JumlahSoal=state.questions.filter(x=>String(x.KuisID)===String(q.ID)).length;
+    });
+
+    await refreshQuizResults();
+    load(false);
+    $('loginView').classList.add('hidden');
+    $('homeView').classList.remove('hidden');
+    $('welcome').textContent='Halo, '+state.student.Nama+'!';
+    $('dbName').textContent=apiQ.data?.databaseName||state.student.DatabaseNama||state.dbId;
+    renderQuizList();
+  }catch(e){
+    load(false);
+    toast(e.message);
+    $('studentInfo').textContent='Gagal memuat: '+e.message;
+  }
+}
 function gvizRequest(sheetName){return new Promise((resolve,reject)=>{const cb='__edusmart_gviz_'+Date.now()+'_'+Math.random().toString(36).slice(2);let timer;const script=document.createElement('script');const cleanup=()=>{clearTimeout(timer);try{delete window[cb]}catch(_){window[cb]=undefined}if(script.parentNode)script.parentNode.removeChild(script)};window[cb]=function(data){cleanup();resolve(data)};script.onerror=()=>{cleanup();reject(Error('Gagal membaca sheet '+sheetName))};script.src='https://docs.google.com/spreadsheets/d/'+encodeURIComponent(state.dbId)+'/gviz/tq?tqx=responseHandler:'+encodeURIComponent(cb)+'&sheet='+encodeURIComponent(sheetName);document.head.appendChild(script);timer=setTimeout(()=>{cleanup();reject(Error('Timeout membaca sheet '+sheetName))},12000)})}
 async function readKuisSheetDirect(){const data=await gvizRequest('Kuis');const table=data&&data.table;if(!table||!Array.isArray(table.rows))return[];return table.rows.map(r=>{const c=(r&&r.c)||[];const val=i=>c[i]&&c[i].v!=null?c[i].v:'';return {ID:String(val(0)).trim(),Judul:String(val(1)).trim(),KodeMapel:String(val(2)).trim(),Kelas:String(val(3)).trim(),JumlahSoal:Number(val(4))||0,DurasiMenit:Number(val(5))||0,LinkMateri:String(val(6)).trim()}}).filter(x=>x.ID)}
 function field(o,names,def=''){if(!o)return def;const keys=Object.keys(o);for(const n of names){const k=keys.find(x=>String(x).trim().toLowerCase()===String(n).trim().toLowerCase());if(k!==undefined&&o[k]!==undefined&&o[k]!==null&&String(o[k]).trim()!=='')return o[k]}return def}
