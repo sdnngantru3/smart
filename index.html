@@ -1736,14 +1736,12 @@ function clearAllData() {
     const LEGACY_SCRIPT_URL_KEY = 'edusmart_script_url';
 
     // ============================================================
-    // KONEKSI DATABASE BERDASARKAN SHEET CONFIG
-    // Aturan:
-    // 1. Sheet 'Config' tidak ada / APPSCRIPT_URL tidak ditemukan ->
-    //    database dianggap belum di-setting dan pengguna wajib melakukan setup.
-    // 2. Sheet 'Config' ada dan APPSCRIPT_URL ditemukan ->
-    //    gunakan APPSCRIPT_URL tersebut sebagai koneksi database.
+    // BOOTSTRAP CONNECTION
+    // Siswa cukup memasukkan Spreadsheet ID. Endpoint bootstrap ini
+    // hanya dipakai untuk membaca sheet Config dan menemukan
+    // APPSCRIPT_URL. Setelah ditemukan, semua API memakai URL tersebut.
     // ============================================================
-    const CONFIG_CHECK_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfcybyNnoAxaaXHZGhjNdgADtD4LRluO3i6r1r3OJjWYulHfJgAkSFM8fCOe0uwTlBxVop2HQ/exec';
+    const BOOTSTRAP_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyNnoAxaaXHZGhjNdgADtD4LRluO3i6r1r3OJjWYulHfJgAkSFM8fCOe0uwTlBxVop2HQ/exec';
 
     let config = JSON.parse(localStorage.getItem(APP_CONFIG_KEY)) || {
       spreadsheetId: '',
@@ -1751,13 +1749,19 @@ function clearAllData() {
       mode: 'offline',
       isOnline: false
     };
+    // Perbaikan kompatibilitas: versi sebelumnya pernah menyimpan deployment URL dengan 1 karakter ID yang keliru.
+    // Jika URL lama tersebut masih ada di localStorage, otomatis gunakan deployment yang benar.
+    const CORRECT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyNnoAxaaXHZGhjNdgADtD4LRluO3i6r1r3OJjWYulHfJgAkSFM8fCOe0uwTlBxVop2HQ/exec';
+    const LEGACY_WRONG_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfcybyNnoAxaaXHZGhjNdgADtD4LRluO3i6r1r3OJjWYulHfJgAkSFM8fCOe0uwTlBxVop2HQ/exec';
+    if (String(config.scriptUrl || '').trim() === LEGACY_WRONG_APPS_SCRIPT_URL) {
+      config.scriptUrl = CORRECT_APPS_SCRIPT_URL;
+      config.mode = 'online';
+      config.isOnline = true;
+      localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
+    }
     // Konfigurasi lama yang belum memiliki properti mode tetap dianggap Offline.
-    // URL Web App resmi yang digunakan aplikasi. Tidak perlu mengetik ulang manual.
-    // Spreadsheet ID tetap menjadi penentu database yang akan dibuka oleh Code.gs.
-    config.scriptUrl = normalizeAppsScriptUrl(CONFIG_CHECK_APPS_SCRIPT_URL) || CONFIG_CHECK_APPS_SCRIPT_URL;
-    config.mode = config.spreadsheetId ? 'online' : 'offline';
-    config.isOnline = !!config.spreadsheetId;
-    localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
+    config.mode = config.mode === 'online' && config.scriptUrl && config.spreadsheetId ? 'online' : 'offline';
+    config.isOnline = config.mode === 'online';
 
     let currentUser = JSON.parse(localStorage.getItem(APP_SESSION_KEY)) || null;
 
@@ -1812,15 +1816,9 @@ function clearAllData() {
     };
 
     window.addEventListener('DOMContentLoaded', async () => {
-      // URL Apps Script otomatis terisi dari deployment resmi.
-      // Spreadsheet ID menentukan database yang dipakai oleh Code.gs.
-      config.scriptUrl = normalizeAppsScriptUrl(CONFIG_CHECK_APPS_SCRIPT_URL) || CONFIG_CHECK_APPS_SCRIPT_URL;
+      // Jika hanya Spreadsheet ID yang tersimpan, cari APPSCRIPT_URL dari Config.
       if (config.spreadsheetId) {
         await bootstrapResolveConfig(config.spreadsheetId, true);
-      } else {
-        config.mode = 'offline';
-        config.isOnline = false;
-        localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
       }
       updateDbStatusBadge();
       if (currentUser) {
@@ -1845,38 +1843,78 @@ function clearAllData() {
       return value.replace(/\/$/, '');
     }
 
-    // KONEKSI DATABASE: Spreadsheet ID -> Config -> APPSCRIPT_URL
-    // Tidak mengubah Code.gs. URL pemeriksaan memakai deployment Apps Script yang sudah ada.
-    // KONEKSI DATABASE: Spreadsheet ID -> Apps Script Web App
-    // URL sudah ditetapkan otomatis; Code.gs tetap tidak diubah.
-    // Code.gs menerima spreadsheetId lalu membuka Spreadsheet tersebut.
     async function bootstrapResolveConfig(sheetId, silent = false) {
-      const id = normalizeGuruSpreadsheetId(sheetId);
-      if (!id) return { success:false, databaseReady:false, message:'Spreadsheet ID belum diisi.', data:null };
+      const id = String(sheetId || '').trim();
+      if (!id) return { success:false, message:'Spreadsheet ID belum diisi.', data:null };
 
-      const endpoint = normalizeAppsScriptUrl(CONFIG_CHECK_APPS_SCRIPT_URL);
-      if (!endpoint) return { success:false, databaseReady:false, message:'Alamat Apps Script tidak valid.', data:null };
+      const bootstrapUrl = normalizeAppsScriptUrl(BOOTSTRAP_APPS_SCRIPT_URL);
+      if (!bootstrapUrl) return { success:false, message:'URL bootstrap tidak valid.', data:null };
 
-      config.spreadsheetId = id;
-      config.scriptUrl = endpoint;
-      config.mode = 'online';
-      config.isOnline = true;
-      localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
-      localStorage.setItem(LEGACY_SPREADSHEET_KEY, id);
-      localStorage.setItem(LEGACY_SCRIPT_URL_KEY, endpoint);
-      updateDbStatusBadge();
+      try {
+        const form = new URLSearchParams();
+        form.append('action', 'getAppConfig');
+        form.append('spreadsheetId', id);
 
-      // Tidak lagi mencoba membaca APPSCRIPT_URL dari Config melalui deployment lama.
-      // Endpoint resmi langsung digunakan untuk memanggil Code.gs dengan Spreadsheet ID.
-      return {
-        success:true,
-        databaseReady:true,
-        message:'Apps Script siap. Spreadsheet ID akan digunakan sebagai database.',
-        data:{ APPSCRIPT_URL:endpoint, SPREADSHEET_ID:id }
-      };
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        let response;
+        try {
+          response = await fetch(bootstrapUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: form.toString(),
+            mode: 'cors',
+            credentials: 'omit',
+            cache: 'no-store',
+            redirect: 'follow',
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+
+        const text = await response.text();
+        let json = null;
+        try { json = JSON.parse(text); } catch (e) {}
+        if (!json || !json.success) {
+          const msg = json && json.message ? json.message : ('Bootstrap gagal (HTTP ' + response.status + ').');
+          throw new Error(msg);
+        }
+
+        const data = json.data || {};
+        const foundSheetId = String(data.SPREADSHEET_ID || id).trim();
+        const foundUrl = normalizeAppsScriptUrl(data.APPSCRIPT_URL || '');
+        if (!foundUrl) {
+          throw new Error('APPSCRIPT_URL tidak ditemukan di sheet Config.');
+        }
+
+        config.spreadsheetId = foundSheetId || id;
+        config.scriptUrl = foundUrl;
+        config.mode = 'online';
+        config.isOnline = true;
+        localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
+        localStorage.setItem(LEGACY_SPREADSHEET_KEY, config.spreadsheetId);
+        localStorage.setItem(LEGACY_SCRIPT_URL_KEY, foundUrl);
+        updateDbStatusBadge();
+
+        return { success:true, message:'Konfigurasi berhasil ditemukan dari Config.', data:data };
+      } catch (err) {
+        const msg = err && err.name === 'AbortError'
+          ? 'Bootstrap timeout saat membaca Config.'
+          : (err && err.message ? err.message : String(err));
+        if (!silent) showToast('Gagal membaca Config: ' + msg, 'error');
+        return { success:false, message:msg, data:null };
+      }
     }
 
     async function ensureBootstrapConfig(sheetId, silent = false) {
+      const current = normalizeAppsScriptUrl(config.scriptUrl);
+      if (current) {
+        config.scriptUrl = current;
+        config.mode = 'online';
+        config.isOnline = true;
+        return { success:true, data:{ APPSCRIPT_URL: current, SPREADSHEET_ID: config.spreadsheetId } };
+      }
       return await bootstrapResolveConfig(sheetId || config.spreadsheetId, silent);
     }
 
@@ -2180,7 +2218,7 @@ function clearAllData() {
       }
 
       // Pengguna bebas memilih Online. Jika Spreadsheet ID sudah ada,
-      // langsung periksa Config untuk mengetahui apakah database sudah di-setting.
+      // langsung coba Bootstrap untuk mengambil APPSCRIPT_URL dari Config.
       // Jika belum ada URL (database baru), mode Online tetap aktif agar
       // pengguna dapat mengisi URL Web App manual melalui Pengaturan Database.
       config.mode = 'online';
@@ -2191,16 +2229,16 @@ function clearAllData() {
 
       const sheetId = normalizeGuruSpreadsheetId(config.spreadsheetId || '');
       if (sheetId && !config.scriptUrl) {
-        showToast('🔄 Menghubungkan ke database menggunakan Spreadsheet ID...', 'info');
+        showToast('🔄 Mode Online aktif. Bootstrap sedang mencari APPSCRIPT_URL...', 'info');
         const boot = await bootstrapResolveConfig(sheetId, true);
         if (boot.success && config.scriptUrl) {
           config.mode = 'online';
           config.isOnline = true;
           localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
           updateDbStatusBadge();
-          showToast('🟢 Online aktif. APPSCRIPT_URL berhasil dibaca dari Config.', 'success');
+          showToast('🟢 Online aktif. APPSCRIPT_URL berhasil diambil dari Bootstrap.', 'success');
         } else {
-          showToast('🟡 Database belum di-setting. Lakukan Setting Database terlebih dahulu.', 'warning');
+          showToast('🟡 Online aktif. APPSCRIPT_URL belum ditemukan; URL Web App masih bisa diisi manual.', 'warning');
         }
       } else if (config.scriptUrl) {
         showToast('🟢 Mode Online aktif.', 'success');
@@ -2241,17 +2279,17 @@ function clearAllData() {
               <div class="flex items-start gap-2">
                 <i class="fa-solid fa-wand-magic-sparkles text-emerald-600 mt-0.5"></i>
                 <div>
-                  <p class="text-xs font-bold text-emerald-800">Koneksi Database</p>
-                  <p class="text-[11px] text-emerald-700 mt-1">Jika database sudah pernah disiapkan, cukup masukkan <b>Spreadsheet ID</b>. Aplikasi menggunakan <b>APPSCRIPT_URL</b> dari sheet <b>Config</b>.</p>
-                  <p id="cfg-bootstrap-status" class="text-[11px] mt-2 font-semibold ${config.scriptUrl ? 'text-emerald-700' : 'text-amber-700'}">${config.scriptUrl ? '🟢 APPSCRIPT_URL ditemukan otomatis dari Config.' : '🟡 Tempel Spreadsheet ID untuk memeriksa database.'}</p>
+                  <p class="text-xs font-bold text-emerald-800">Koneksi otomatis melalui Bootstrap</p>
+                  <p class="text-[11px] text-emerald-700 mt-1">Jika database sudah pernah disiapkan, cukup masukkan <b>Spreadsheet ID</b>. Aplikasi akan mencari <b>APPSCRIPT_URL</b> dari sheet <b>Config</b> secara otomatis.</p>
+                  <p id="cfg-bootstrap-status" class="text-[11px] mt-2 font-semibold ${config.scriptUrl ? 'text-emerald-700' : 'text-amber-700'}">${config.scriptUrl ? '🟢 APPSCRIPT_URL ditemukan otomatis dari Config.' : '🟡 Tempel Spreadsheet ID. Bootstrap akan mencari APPSCRIPT_URL secara otomatis.'}</p>
                 </div>
               </div>
             </div>
 
             <div id="cfg-script-url-wrap" class="">
-              <label class="block text-xs font-semibold text-slate-700 mb-1">2. Apps Script Web App URL <span class="text-emerald-600">(otomatis)</span></label>
-              <input type="text" id="cfg-script-url" value="${config.scriptUrl || ''}" placeholder="URL Web App otomatis terisi" class="w-full text-xs px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 outline-none">
-              <p class="text-[11px] text-slate-500 mt-1">URL Web App diisi otomatis. Spreadsheet ID di atas menentukan database yang digunakan.</p>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">2. Apps Script Web App URL <span class="text-emerald-600">(otomatis dari Bootstrap)</span></label>
+              <input type="text" id="cfg-script-url" value="${config.scriptUrl || ''}" placeholder="Untuk database baru: paste URL Web App di sini" class="w-full text-xs px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 outline-none">
+              <p class="text-[11px] text-slate-500 mt-1">Untuk database lama, Bootstrap akan mengisi otomatis. Untuk <b>database baru</b> yang belum memiliki APPSCRIPT_URL, URL Web App tetap dapat diisi manual di sini.</p>
             </div>
 
             <div class="border-t border-slate-200 pt-4">
@@ -2352,9 +2390,9 @@ function clearAllData() {
                   <li>Setelah mengubah <code>Code.gs</code>, buat <b>New version</b> pada deployment yang sama.</li>
                 </ul>
               </li>
-              <li><b>Konfigurasi aplikasi:</b> Masukkan <i>Spreadsheet ID</i>. Aplikasi menggunakan <code>APPSCRIPT_URL</code> dari sheet <code>Config</code>. Jika <code>Config</code> belum ada, lakukan Setting Database.</li>
+              <li><b>Konfigurasi aplikasi:</b> Cukup masukkan <i>Spreadsheet ID</i>. Aplikasi menggunakan bootstrap untuk membaca <code>APPSCRIPT_URL</code> dari sheet <code>Config</code> secara otomatis.</li>
               <li><b>GitHub Pages:</b> Upload <code>index.html</code> dan <code>kuis.html</code> ke repository GitHub. Aktifkan <b>Settings &rarr; Pages</b> lalu pilih branch/folder publik yang digunakan.</li>
-              <li><b>Konfigurasi aplikasi:</b> Masukkan <b>Spreadsheet ID</b>. Jika sheet <code>Config</code> belum ada, lakukan <b>Setting Database</b>. Setelah database siap, <code>APPSCRIPT_URL</code> dibaca dari <code>Config</code>.</li>
+              <li><b>Konfigurasi aplikasi:</b> Buka website GitHub Pages, masukkan <b>Spreadsheet ID saja</b> pada <b>Setup Database</b>, lalu klik <b>Simpan</b>. URL Web App akan dicari otomatis dari sheet <code>Config</code>.</li>
               <li><b>Penting:</b> <code>Code.gs</code> tetap hanya dipasang di Google Apps Script. Jangan menaruh <b>OpenAI API Key</b> di repository GitHub.</li>
             </ol>
           </div>
@@ -2592,7 +2630,7 @@ function clearAllData() {
       if (wrap) wrap.classList.remove('hidden');
       if (status) {
         status.className = 'text-[11px] mt-2 font-semibold ' + (type === 'success' ? 'text-emerald-700' : 'text-amber-700');
-        status.textContent = message || (config.scriptUrl ? '🟢 Database sudah di-setting. APPSCRIPT_URL dibaca dari Config.' : '🟡 Database belum di-setting. Silakan lakukan Setting Database.');
+        status.textContent = message || (config.scriptUrl ? '🟢 APPSCRIPT_URL ditemukan otomatis dari Config.' : '🟡 APPSCRIPT_URL belum ditemukan. Periksa Spreadsheet ID dan sheet Config.');
       }
     }
 
@@ -2623,18 +2661,17 @@ function clearAllData() {
 
       saveGuruSpreadsheetId(sheetId, true);
       const status = document.getElementById('cfg-bootstrap-status');
-      if (status) status.textContent = '🔄 Memeriksa sheet Config pada database...';
+      if (status) status.textContent = '🔄 Bootstrap sedang mencari APPSCRIPT_URL di database...';
 
       const boot = await bootstrapResolveConfig(sheetId, false);
       let normalizedScriptUrl = normalizeAppsScriptUrl(config.scriptUrl);
 
-      // Jika Config belum ada / APPSCRIPT_URL belum ditemukan, ini dianggap
-      // database baru dan pengguna wajib mengisi URL Web App untuk proses setup.
-      if (!boot.databaseReady || !normalizedScriptUrl) {
+      // Jika database baru belum memiliki APPSCRIPT_URL, izinkan URL Web App diisi manual.
+      if (!boot.success || !normalizedScriptUrl) {
         const manualScriptUrl = normalizeAppsScriptUrl(document.getElementById('cfg-script-url')?.value || '');
         if (!manualScriptUrl) {
-          setBootstrapSetupState(true, '🟡 Database belum di-setting. Isi URL Web App lalu simpan untuk membuat Config.', 'warning');
-          showToast('Database belum di-setting. Isi URL Apps Script untuk memulai setup.', 'warning');
+          setBootstrapSetupState(true, '🟡 Database belum memiliki APPSCRIPT_URL. Untuk database baru, isi URL Web App secara manual.', 'warning');
+          showToast('Isi Apps Script Web App URL untuk database baru.', 'warning');
           return;
         }
         normalizedScriptUrl = manualScriptUrl;
@@ -2644,7 +2681,7 @@ function clearAllData() {
         localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
         localStorage.setItem(LEGACY_SCRIPT_URL_KEY, manualScriptUrl);
         updateDbStatusBadge();
-        setBootstrapSetupState(true, '🟡 URL Web App digunakan untuk proses Setting Database baru.', 'warning');
+        setBootstrapSetupState(true, '🟡 Menggunakan Apps Script Web App URL manual untuk menyiapkan database baru.', 'warning');
       }
 
       config.scriptUrl = normalizedScriptUrl;
@@ -2653,7 +2690,7 @@ function clearAllData() {
       localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
       localStorage.setItem(LEGACY_SCRIPT_URL_KEY, normalizedScriptUrl);
       updateDbStatusBadge();
-      setBootstrapSetupState(false, '🟢 Database sudah di-setting. APPSCRIPT_URL dari Config. Mode Online aktif.', 'success');
+      setBootstrapSetupState(false, '🟢 APPSCRIPT_URL ditemukan otomatis. Mode Online aktif.', 'success');
 
       const res = await apiCall('saveAppConfig', {}, {
         SPREADSHEET_ID: sheetId,
@@ -2682,11 +2719,11 @@ function clearAllData() {
 
       config.spreadsheetId = sheetId;
       const boot = await bootstrapResolveConfig(sheetId, false);
-      if (!boot.databaseReady || !normalizeAppsScriptUrl(config.scriptUrl)) {
+      if (!boot.success || !normalizeAppsScriptUrl(config.scriptUrl)) {
         const manualScriptUrl = normalizeAppsScriptUrl(document.getElementById('cfg-script-url')?.value || '');
         if (!manualScriptUrl) {
-          setBootstrapSetupState(true, '🟡 Database belum di-setting. Isi URL Web App lalu jalankan Setting Database.', 'warning');
-          showToast('Database belum di-setting. Isi URL Web App terlebih dahulu.', 'warning');
+          setBootstrapSetupState(true, '🟡 Config belum memiliki APPSCRIPT_URL. Isi URL Web App untuk menguji database baru.', 'warning');
+          showToast('APPSCRIPT_URL belum ditemukan. Isi URL Web App untuk database baru.', 'warning');
           return;
         }
         config.scriptUrl = manualScriptUrl;
@@ -2694,7 +2731,7 @@ function clearAllData() {
         config.isOnline = true;
         localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
         localStorage.setItem(LEGACY_SCRIPT_URL_KEY, manualScriptUrl);
-        setBootstrapSetupState(true, '🟡 URL Web App digunakan untuk database yang belum di-setting.', 'success');
+        setBootstrapSetupState(true, '🟢 Menggunakan URL Web App manual. URL ini dapat dipakai untuk menyiapkan database baru.', 'success');
       }
 
       const res = await apiCall('testConnection');
@@ -2705,7 +2742,7 @@ function clearAllData() {
         updateDbStatusBadge();
         if (currentUser && String(currentUser.Role || '').toLowerCase() === 'guru') renderSidebarNav();
         const status = document.getElementById('cfg-bootstrap-status');
-        if (status) status.textContent = '🟢 Koneksi berhasil. Database menggunakan APPSCRIPT_URL dari Config.';
+        if (status) status.textContent = '🟢 Koneksi berhasil. APPSCRIPT_URL diambil otomatis dari Config.';
         showToast('🟢 ' + (res.message || 'Koneksi ke Spreadsheet berhasil.'), 'success');
       } else {
         config.mode = 'offline';
@@ -2758,7 +2795,7 @@ function clearAllData() {
     // KODE GURU = SPREADSHEET ID
     // Sederhana: siswa cukup paste Spreadsheet ID dari Guru.
     // Setelah ditempel, ID langsung disimpan ke browser.
-    // APPSCRIPT_URL menjadi acuan koneksi setelah database memiliki Config.
+    // APPSCRIPT_URL dicari otomatis melalui Config/bootstrap.
     // ============================================================
     function saveGuruSpreadsheetId(spreadsheetId, silent = false) {
       const id = String(spreadsheetId || '').trim();
@@ -2778,6 +2815,17 @@ function clearAllData() {
         id = id.substring(pos + marker.length).split('/')[0].split('?')[0].split('#')[0];
       }
       return id.trim();
+    }
+
+    function toggleSpreadsheetIdVisibility() {
+      const input = document.getElementById('login-db-code');
+      const button = document.getElementById('toggle-spreadsheet-id');
+      if (!input || !button) return;
+      const visible = input.type === 'text';
+      input.type = visible ? 'password' : 'text';
+      button.innerHTML = visible ? '<i class="fa-solid fa-eye"></i>' : '<i class="fa-solid fa-eye-slash"></i>';
+      button.title = visible ? 'Tampilkan Spreadsheet ID' : 'Sembunyikan Spreadsheet ID';
+      button.setAttribute('aria-label', button.title);
     }
 
     function renderLoginPage() {
@@ -2811,8 +2859,8 @@ function clearAllData() {
               <label class="block text-xs font-semibold text-slate-700 mb-1">Kode Guru (Spreadsheet ID)</label>
               <div class="relative">
                 <i class="fa-solid fa-key absolute left-3.5 top-3 text-slate-400 text-xs"></i>
-                <input type="text" id="login-db-code" value="" required placeholder="Paste Spreadsheet ID dari Guru di sini" autocomplete="off" class="w-full pl-9 pr-10 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
-                <button type="button" class="absolute right-2 top-2 text-slate-400 p-1" title="Spreadsheet ID" aria-hidden="true"><i class="fa-solid fa-database"></i></button>
+                <input type="password" id="login-db-code" value="" required placeholder="Paste Spreadsheet ID dari Guru di sini" autocomplete="off" spellcheck="false" class="w-full pl-9 pr-16 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+                <button type="button" onclick="toggleSpreadsheetIdVisibility()" id="toggle-spreadsheet-id" class="absolute right-2 top-2 text-slate-400 hover:text-indigo-600 p-1" title="Tampilkan Spreadsheet ID" aria-label="Tampilkan Spreadsheet ID"><i class="fa-solid fa-eye"></i></button>
               </div>
               <p id="login-db-hint" class="text-[10px] text-slate-500 mt-1">Paste Spreadsheet ID dari Guru sekali. ID langsung disimpan.</p>
             </div>
@@ -2862,18 +2910,17 @@ function clearAllData() {
 
           const boot = await bootstrapResolveConfig(id, true);
           const hint = document.getElementById('login-db-hint');
-          if (boot.databaseReady && config.scriptUrl) {
+          if (boot.success && config.scriptUrl) {
             config.mode = 'online';
             config.isOnline = true;
             localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
             updateDbStatusBadge();
-            if (hint) hint.textContent = '🟢 Spreadsheet ID tersimpan & database siap. Mode Online aktif.';
+            if (hint) hint.textContent = '🟢 Spreadsheet ID tersimpan & database terhubung. Mode Online aktif.';
             dbCodeInput.classList.add('border-emerald-400','bg-emerald-50');
             showToast('✅ Spreadsheet ID tersimpan & database terhubung.', 'success');
           } else {
-            if (hint) hint.textContent = '🟡 Spreadsheet ID tersimpan. Database belum di-setting, silakan buka Pengaturan Database.';
-            dbCodeInput.classList.remove('border-emerald-400','bg-emerald-50');
-            showToast('🟡 Spreadsheet ID tersimpan. Database belum di-setting.', 'warning');
+            if (hint) hint.textContent = '🟢 Kode Guru tersimpan.';
+            showToast('✅ Spreadsheet ID tersimpan.', 'success');
           }
         });
       }
@@ -2896,6 +2943,12 @@ function clearAllData() {
       if (dbCode) { dbCode.required = true; dbCode.disabled = false; dbCode.placeholder = 'Paste Spreadsheet ID dari Guru di sini'; }
       if (usernameInput) { usernameInput.value = 'guru'; usernameInput.placeholder = 'guru'; }
       if (passwordInput) { passwordInput.value = '11223344'; passwordInput.placeholder = '11223344'; }
+      const savedId = normalizeGuruSpreadsheetId(config.spreadsheetId || localStorage.getItem(LEGACY_SPREADSHEET_KEY) || '');
+      const dbInput = document.getElementById('login-db-code');
+      if (dbInput && savedId) dbInput.value = savedId;
+      const hint = document.getElementById('login-db-hint');
+      if (hint && savedId) hint.textContent = 'Spreadsheet ID tersimpan di browser. Tidak perlu ditempel lagi.';
+
     }
 
     function toggleDbCodeVisibility() {
@@ -2954,13 +3007,13 @@ function clearAllData() {
       spreadsheetId = normalizeGuruSpreadsheetId(spreadsheetId);
       if (!spreadsheetId) { showToast('Masukkan Spreadsheet ID terlebih dahulu.', 'warning'); return; }
 
-      // Periksa database berdasarkan Config. Jika Config/APPSCRIPT_URL belum ada,
-      // pengguna wajib menjalankan Setting Database terlebih dahulu.
-      if (!config.scriptUrl || config.mode !== 'online' || config.spreadsheetId !== spreadsheetId) {
+      // Satu-satunya kode koneksi: Spreadsheet ID. Jika URL belum tersimpan,
+      // lakukan bootstrap otomatis untuk mengambil APPSCRIPT_URL dari Config.
+      if (!config.scriptUrl || config.mode !== 'online') {
         saveGuruSpreadsheetId(spreadsheetId, true);
         const boot = await bootstrapResolveConfig(spreadsheetId, false);
-        if (!boot.databaseReady || !config.scriptUrl) {
-          showToast('Database belum di-setting. Silakan buka Pengaturan Database Spreadsheet dan lakukan Setting Database.', 'warning');
+        if (!boot.success || !config.scriptUrl) {
+          showToast('APPSCRIPT_URL belum ditemukan dari Bootstrap. Pastikan Config database sudah berisi APPSCRIPT_URL.', 'warning');
           return;
         }
       }
