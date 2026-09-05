@@ -58,10 +58,11 @@ body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,
 <div id="toast" class="fixed bottom-5 right-5 z-50 hidden max-w-sm bg-slate-900 text-white px-4 py-3 rounded-xl text-sm shadow-xl"></div>
 <script>
 const CONFIG_KEY='edusmart_config',DB_KEY='edusmart_spreadsheet_id',API_KEY='edusmart_script_url',GEMINI_KEY='edusmart_gemini_api_key';
+const DEFAULT_SCRIPT_URL='https://script.google.com/macros/s/AKfycbyNnoAxaaXHZGhjNdgADtD4LRluO3i6r1r3OJjWYulHfJgAkSFM8fCOe0uwTlBxVop2HQ/exec';
 let config={},subjects=[],students=[],questions=[];
 function $(id){return document.getElementById(id)}
 function toast(msg){$('toast').textContent=msg;$('toast').classList.remove('hidden');clearTimeout(window._toast);window._toast=setTimeout(()=>$('toast').classList.add('hidden'),3500)}
-function loadConfig(){try{config=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')}catch(e){config={}};config.spreadsheetId=(new URLSearchParams(location.search).get('db')||localStorage.getItem(DB_KEY)||config.spreadsheetId||'').trim();config.scriptUrl=(new URLSearchParams(location.search).get('api')||localStorage.getItem(API_KEY)||config.scriptUrl||'').trim()}
+function loadConfig(){try{config=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')}catch(e){config={}};const params=new URLSearchParams(location.search);config.spreadsheetId=(params.get('db')||localStorage.getItem(DB_KEY)||config.spreadsheetId||'').trim();const requestedApi=(params.get('api')||'').trim();config.scriptUrl=requestedApi||DEFAULT_SCRIPT_URL;localStorage.setItem(API_KEY,config.scriptUrl);try{localStorage.setItem(CONFIG_KEY,JSON.stringify(config))}catch(e){}}
 function normalizeUrl(u){u=String(u||'').trim();return u.endsWith('/')?u.slice(0,-1):u}
 async function rpc(action,body={}){
   if(!config.scriptUrl||!config.spreadsheetId)throw Error('Database belum terhubung. Buka Dashboard Guru → Setup Database.');
@@ -135,9 +136,6 @@ async function generateAI(){
 
     Pastikan jumlah soal sesuai permintaan.
     Pastikan semua soal memiliki empat pilihan A, B, C, D.
-    Pastikan setiap pilihan hanya berisi teks jawaban yang singkat dan relevan dengan soal.
-    JANGAN pernah memasukkan proses berpikir, analisis internal, instruksi sistem, instruksi pengguna, catatan pembuatan, pembahasan tentang JSON, kalimat seperti "Let's...", "Final check", "Ready", "Formatting", "Schema", atau teks meta lainnya ke dalam pertanyaan maupun pilihan jawaban.
-    JANGAN menjelaskan bagaimana soal dibuat. Hanya keluarkan data soal final.
     Pastikan jawaban benar benar-benar sesuai dengan opsi yang diberikan.
     Pastikan format JSON yang Anda berikan adalah murni valid dan bisa diparsing menggunakan JSON.parse di JavaScript tanpa tambahan kata-kata pengantar.
   `;
@@ -161,7 +159,7 @@ async function generateAI(){
             kiri:{type:'ARRAY',items:{type:'STRING'}},
             jodohIndex:{type:'ARRAY',items:{type:'STRING'}}
           },
-          required:['tipe','pertanyaan','pilihanA','pilihanB','pilihanC','pilihanD','jawaban']
+          required:['tipe','pertanyaan','jawaban']
         }
       }
     },
@@ -188,30 +186,17 @@ async function generateAI(){
     const parsedQuestions=JSON.parse(jsonText);
     if(!Array.isArray(parsedQuestions)||!parsedQuestions.length)throw new Error('Gemini tidak mengembalikan daftar soal.');
 
-    // Pengaman: cegah teks analisis/instruksi AI masuk ke soal atau pilihan.
-    const cleanAiText=v=>String(v??'').replace(/\\s+/g,' ').trim();
-    const aiLeakPattern=/(let'?s\\s+(make|go|do|check|proceed)|final\\s+check|formatting\\s+(as|the)|system\\s*(prompt|instruction)|user\\s*prompt|schema|json|no\\s+(tabs|newlines)|correct\\s+is|i\\s+(must|need)|ready[.!]|prompt\\s+says|internal\\s+(reasoning|analysis)|analysis\\s*[:])/i;
-    const validateAiQuestion=(x,i)=>{
-      const tipe=cleanAiText(x?.tipe||'PG').toUpperCase();
-      const pertanyaan=cleanAiText(x?.pertanyaan);
-      const pilihanA=cleanAiText(x?.pilihanA);
-      const pilihanB=cleanAiText(x?.pilihanB);
-      const pilihanC=cleanAiText(x?.pilihanC);
-      const pilihanD=cleanAiText(x?.pilihanD);
-      const jawaban=cleanAiText(x?.jawaban).toUpperCase();
-      if(!['PG','PGK'].includes(tipe))throw new Error('Soal '+(i+1)+' memiliki tipe tidak valid.');
-      if(!pertanyaan||!pilihanA||!pilihanB||!pilihanC||!pilihanD)throw new Error('Soal '+(i+1)+' belum memiliki pertanyaan dan empat pilihan lengkap.');
-      if([pertanyaan,pilihanA,pilihanB,pilihanC,pilihanD].some(v=>v.length>500))throw new Error('Soal '+(i+1)+' memiliki teks terlalu panjang. Silakan buat ulang soal.');
-      if([pertanyaan,pilihanA,pilihanB,pilihanC,pilihanD].some(v=>aiLeakPattern.test(v)))throw new Error('Soal '+(i+1)+' terdeteksi mengandung teks instruksi/analisis AI. Soal tidak dimasukkan agar database tetap aman. Silakan klik Buat Soal dengan AI lagi.');
-      if(tipe==='PG'&&!/^[ABCD]$/.test(jawaban))throw new Error('Kunci jawaban soal '+(i+1)+' harus A, B, C, atau D.');
-      if(tipe==='PGK'&&!/^[ABCD](;[ABCD])*$/.test(jawaban))throw new Error('Kunci jawaban PGK soal '+(i+1)+' tidak valid.');
-      return {tipe,pertanyaan,pilihanA,pilihanB,pilihanC,pilihanD,jawaban};
-    };
+    parsedQuestions.forEach(x=>addQuestion({
+      tipe:x.tipe||'PG',
+      pertanyaan:x.pertanyaan||'',
+      pilihanA:x.pilihanA||'',
+      pilihanB:x.pilihanB||'',
+      pilihanC:x.pilihanC||'',
+      pilihanD:x.pilihanD||'',
+      jawaban:x.jawaban||''
+    }));
 
-    const safeQuestions=parsedQuestions.map(validateAiQuestion);
-    safeQuestions.forEach(x=>addQuestion(x));
-
-    toast('Soal berhasil dibuat oleh Gemini dan lolos pemeriksaan keamanan.');
+    toast('Soal berhasil dibuat oleh Gemini.');
   }catch(e){
     console.error(e);
     toast('Gagal membuat soal: '+e.message);
