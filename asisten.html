@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Kelasku (Asisten Guru AI) - Membantu mempercepat kegiatan guru</title>
+  
+  <!-- CSS Libraries -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- Library untuk memproses Markdown dari AI -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { corePlugins: { preflight: false } }
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+    :root {
+      --theme-primary: #332df0;
+      --theme-secondary: #14b8a6;
+      --theme-gradient-start: #3709db;
+      --theme-gradient-end: #115e59;
+      --theme-sidebar-hover: rgba(255, 255, 255, 0.12);
+      --bg-light: #f8fafc;
+      --sidebar-width: 260px;
+    }
+
+    body.theme-blue { --theme-primary: #1d4ed8; --theme-secondary: #3b82f6; --theme-gradient-start: #1e3a8a; --theme-gradient-end: #1e40af; }
+    body.theme-rose { --theme-primary: #be123c; --theme-secondary: #f43f5e; --theme-gradient-start: #881337; --theme-gradient-end: #9f1239; }
+    body.theme-violet { --theme-primary: #6d28d9; --theme-secondary: #8b5cf6; --theme-gradient-start: #4c1d95; --theme-gradient-end: #5b21b6; }
+
+    * { box-sizing: border-box; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bg-light); color: #1E293B; overflow-x: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    .mobile-topbar {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px;
+      background: linear-gradient(135deg, var(--theme-gradient-start) 0%, var(--theme-gradient-end) 100%);
+      z-index: 1050; display: none; align-items: center; padding: 0 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    .mobile-topbar .brand-text { color: white; font-weight: 700; font-size: 0.95rem; margin-left: 8px; }
+    .mobile-topbar .menu-toggle { background: rgba(255,255,255,0.15); border: none; color: white; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; }
+
+    .sidebar {
+      height: 100vh; width: var(--sidebar-width); position: fixed; top: 0; left: 0;
+      background: linear-gradient(180deg, var(--theme-gradient-start) 0%, var(--theme-gradient-end) 100%); color: #ffffff; padding-top: 20px;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 1060; box-shadow: 4px 0 20px rgba(0,0,0, 0.15); overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    .sidebar.mobile-closed { transform: translateX(-100%); }
+    .sidebar.mobile-open { transform: translateX(0); }
+
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1055; backdrop-filter: blur(4px); }
+    .sidebar-overlay.active { display: block; }
+
+    .sidebar .brand { padding: 8px 20px 16px 20px; font-size: 1.1rem; font-weight: 800; border-bottom: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+    .sidebar .brand i { font-size: 1.4rem; color: #5eead4; }
+    .sidebar .profile-card { padding: 8px 16px 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+    .sidebar .profile-card .avatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #ffffff;}
+    .sidebar .profile-card .info .name { display: block; font-weight: 700; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sidebar .profile-card .info .role { display: block; font-size: 0.6rem; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px;}
+
+    .sidebar .nav-link { color: rgba(255, 255, 255, 0.8); padding: 11px 18px; display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 0.85rem; border-left: 4px solid transparent; text-decoration: none; cursor: pointer; border-radius: 0 10px 10px 0; margin: 2px 8px 2px 0; transition: all 0.2s; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #ffffff; background: var(--theme-sidebar-hover); border-left-color: var(--theme-secondary); }
+    .sidebar .nav-link i { width: 22px; text-align: center; font-size: 1.05rem; }
+
+    .main-content { margin-left: var(--sidebar-width); padding: 16px 20px 0px 20px; display: flex; flex-direction: column; height: 100vh; transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+    .text-theme-primary { color: var(--theme-primary) !important; }
+    .bg-theme-primary { background-color: var(--theme-primary) !important; }
+    .btn-theme { background-color: var(--theme-primary); color: white; border: none; }
+    .btn-theme:hover { background-color: var(--theme-gradient-end); color: white; }
+
+    .chat-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+    }
+    
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+        background-size: 24px 24px;
+        background-color: #f8fafc;
+    }
+
+    .msg-wrapper { display: flex; width: 100%; }
+    .msg-wrapper.bot { justify-content: flex-start; }
+    .msg-wrapper.user { justify-content: flex-end; }
+
+    .msg-bubble {
+        max-width: 82%;
+        padding: 14px 18px;
+        border-radius: 16px;
+        font-size: 0.92rem;
+        line-height: 1.6;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        position: relative;
+    }
+    
+    .msg-wrapper.bot .msg-bubble {
+        background-color: #ffffff;
+        color: #1e293b;
+        border: 1px solid #e2e8f0;
+        border-bottom-left-radius: 4px;
+    }
+    
+    .msg-wrapper.user .msg-bubble {
+        background-color: var(--theme-primary);
+        color: #ffffff;
+        border-bottom-right-radius: 4px;
+    }
+
+    .msg-avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+    .msg-wrapper.bot .msg-avatar { background: var(--theme-primary); color: white; margin-right: 12px; }
+    .msg-wrapper.user .msg-avatar { background: #334155; color: #ffffff; margin-left: 12px; }
+
+    .msg-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(0,0,0,0.06);
+    }
+    .msg-action-btn {
+        background: transparent;
+        border: none;
+        color: #64748b;
+        font-size: 0.75rem;
+        cursor: pointer;
+        padding: 2px 8px;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+    .msg-action-btn:hover { background: #f1f5f9; color: var(--theme-primary); }
+
+    .chat-input-area {
+        padding: 16px 20px;
+        background: #ffffff;
+        border-top: 1px solid #e2e8f0;
+        z-index: 10;
+    }
+
+    .quick-prompts {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 12px;
+        scrollbar-width: none;
+    }
+    .quick-prompts::-webkit-scrollbar { display: none; }
+    .quick-prompt-btn {
+        white-space: nowrap;
+        padding: 6px 14px;
+        border-radius: 20px;
+        border: 1px solid rgba(15, 118, 110, 0.25);
+        color: var(--theme-primary);
+        background: #f0fdfa;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .quick-prompt-btn:hover { background: var(--theme-primary); color: white; border-color: var(--theme-primary); }
+
+    .input-box {
+        display: flex;
+        align-items: flex-end;
+        background: #f8fafc;
+        border-radius: 14px;
+        padding: 8px 12px;
+        border: 1.5px solid #cbd5e1;
+        transition: border-color 0.2s, background 0.2s;
+        gap: 8px;
+    }
+    .input-box:focus-within { border-color: var(--theme-primary); background: #ffffff; box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12); }
+    
+    .input-box textarea {
+        flex: 1;
+        border: none;
+        background: transparent;
+        padding: 6px 4px;
+        font-size: 0.95rem;
+        resize: none;
+        outline: none;
+        max-height: 120px;
+        font-family: inherit;
+    }
+    
+    .tool-btn {
+        background: #f1f5f9;
+        color: #475569;
+        border: none;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+    }
+    .tool-btn:hover { background: #e2e8f0; color: var(--theme-primary); }
+    .tool-btn.active { background: #fef2f2; color: #ef4444; border: 1px solid #fca5a5; }
+
+    .send-btn {
+        background: var(--theme-primary);
+        color: white;
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: transform 0.1s, background 0.2s;
+        flex-shrink: 0;
+    }
+    .send-btn:hover { background: var(--theme-gradient-end); transform: scale(1.05); }
+    .send-btn:disabled { background: #cbd5e1; cursor: not-allowed; transform: none; }
+
+    /* Typing indicator animation */
+    .typing-indicator { display: flex; gap: 4px; padding: 4px 8px; }
+    .typing-dot { width: 6px; height: 6px; background: var(--theme-primary); border-radius: 50%; animation: typing 1.4s infinite ease-in-out both; }
+    .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+    .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+    /* Markdown styling inside chat */
+    .msg-bubble p { margin-bottom: 8px; }
+    .msg-bubble p:last-child { margin-bottom: 0; }
+    .msg-bubble ul, .msg-bubble ol { margin-top: 6px; padding-left: 20px; margin-bottom: 8px; }
+    .msg-bubble li { margin-bottom: 4px; }
+    .msg-bubble strong { color: var(--theme-primary); }
+    .msg-wrapper.user .msg-bubble strong { color: #fff; }
+    .msg-bubble code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-family: monospace; }
+    .msg-wrapper.user .msg-bubble code { background: rgba(255,255,255,0.2); color: #fff; }
+    .msg-bubble pre { background: #1e293b; color: #f8fafc; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 10px 0; }
+
+    @media (max-width: 992px) {
+      .mobile-topbar { display: flex !important; }
+      body { padding-top: 56px; height: calc(100vh - 56px); }
+      .sidebar { transform: translateX(-100%); top: 0; }
+      .sidebar.mobile-open { transform: translateX(0); }
+      .main-content { margin-left: 0 !important; padding: 12px 10px 0px 10px; height: 100%; }
+      .chat-container { margin-bottom: 8px; border-radius: 12px; }
+    }
+  </style>
+</head>
+<body class="theme-default">
+
+  <!-- Mobile Topbar -->
+  <div class="mobile-topbar" id="mobileTopbar">
+    <button class="menu-toggle" onclick="toggleMobileSidebar()" aria-label="Buka Menu"><i class="fa-solid fa-bars"></i></button>
+    <span class="brand-text"><i class="fa-solid fa-robot me-2"></i><span>Asisten Guru AI</span></span>
+  </div>
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="mainSidebar">
+    <div class="brand">
+      <i class="fa-solid fa-robot"></i>
+      <span class="text-truncate">Asisten Guru AI</span>
+    </div>
+    
+    <div class="profile-card">
+      <div class="avatar"><i class="fa-solid fa-chalkboard-user"></i></div>
+      <div class="info">
+        <span class="name">Bapak/Ibu Guru</span>
+        <span class="role">GURU PENGAJAR</span>
+      </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <nav class="nav flex-column my-2">
+      <a class="nav-link active" href="buat_soal.html" id="menu-soal">
+        <i class="fa-solid fa-list-check"></i><span>Buat Soal Kuis</span>
+      </a>
+      <a class="nav-link" href="game.html" id="menu-game">
+        <i class="fa-solid fa-gamepad"></i><span>Game</span>
+      </a>
+      <a class="nav-link" href="pembuat_bacaan.html" id="menu-bacaan">
+        <i class="fa-solid fa-book-open-reader"></i><span>Buat Bacaan</span>
+      </a>
+      <a class="nav-link" href="modul_ajar.html" id="menu-modul">
+        <i class="fa-solid fa-file-lines"></i><span>Modul Ajar</span>
+      </a>
+      <a class="nav-link" href="ice_breaking.html" id="menu-icebreaking">
+        <i class="fa-solid fa-icons"></i><span>Ice Breaking</span>
+      </a>
+      <a class="nav-link" href="guru_virtual.html" id="menu-guruvirtual">
+        <i class="fa-solid fa-user-astronaut"></i><span>Guru Virtual</span>
+      </a>
+      <a class="nav-link" href="literasi.html" id="menu-literasi">
+        <i class="fa-solid fa-book"></i><span>Literasi</span>
+      </a>
+    </nav>
+
+    <!-- PERBAIKAN: Menu Log Out / Kembali -->
+    <div class="mt-auto p-3">
+      <a class="nav-link text-danger w-100 rounded-3" href="index.html">
+        <i class="fa-solid fa-right-from-bracket"></i><span>Log Out / Kembali</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="main-content">
+    
+    <!-- Top Header Bar -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-slate-200 shrink-0">
+      <div>
+        <h5 class="fw-bold text-dark m-0 d-flex align-items-center gap-2" id="current-category-title">
+            <i class="fa-solid fa-wand-magic-sparkles text-theme-primary"></i> Asisten Guru AI
+        </h5>
+        <p class="text-muted small m-0" id="header-realtime-clock">Memuat Waktu Real-Time...</p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <!-- Pengaturan API Key Gemini -->
+        <button class="btn btn-sm btn-outline-primary shadow-sm rounded-pill px-3" onclick="requestApiKey()" title="Pengaturan API Key Gemini">
+          <i class="fa-solid fa-key me-1"></i> Set API Key
+        </button>
+        <span class="badge bg-success bg-opacity-10 text-success border border-success py-1.5 px-3 rounded-pill shadow-sm">
+            <i class="fa-solid fa-circle-check me-1"></i> AI Ready
+        </span>
+        <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="confirmResetChat()" title="Bersihkan Obrolan"><i class="fa-solid fa-broom"></i></button>
+      </div>
+    </div>
+
+    <!-- Chat Container -->
+    <div class="chat-container rounded-4">
+        
+        <!-- Messages Area -->
+        <div class="chat-messages" id="chat-messages">
+            <!-- Welcome Message -->
+            <div class="msg-wrapper bot">
+                <div class="msg-avatar shadow-sm"><i class="fa-solid fa-robot"></i></div>
+                <div class="msg-bubble">
+                    <p class="mb-2 fw-bold text-theme-primary">Selamat Datang di Asisten Guru AI! 👋</p>
+                    <p class="mb-2">Saya adalah asisten AI serbaguna yang siap mendampingi kegiatan mengajar Anda. Silakan pilih menu di samping atau ketik langsung kebutuhan Anda hari ini!</p>
+                    <div class="bg-light p-2 rounded-3 border small text-muted">
+                      <strong class="text-dark d-block mb-1"><i class="fa-solid fa-star text-warning me-1"></i> Fitur Utama:</strong>
+                      <div class="row g-1">
+                        <div class="col-6"><i class="fa-solid fa-check text-success me-1"></i> Pembuat Soal & Kunci</div>
+                        <div class="col-6"><i class="fa-solid fa-check text-success me-1"></i> Game Edukasi Kelas</div>
+                        <div class="col-6"><i class="fa-solid fa-check text-success me-1"></i> Teks Bacaan & Cerita</div>
+                        <div class="col-6"><i class="fa-solid fa-check text-success me-1"></i> Modul Ajar RPP</div>
+                        <div class="col-6"><i class="fa-solid fa-check text-success me-1"></i> Ide Ice Breaking Seru</div>
+                        <div class="col-6"><i class="fa-solid fa-check text-success me-1"></i> Guru Virtual Suara</div>
+                        <div class="col-6"><i class="fa-solid fa-check text-success me-1"></i> Literasi</div>
+                      </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="chat-input-area">
+            <!-- Dynamic Quick Prompts Bar -->
+            <div class="quick-prompts" id="quick-prompts-container">
+                <!-- Diisi secara dinamis berdasarkan menu yang dipilih -->
+            </div>
+
+            <!-- Text & Voice Input Box -->
+            <div class="input-box">
+                <button class="tool-btn" id="mic-btn" onclick="toggleVoiceInput()" title="Input Suara (Mikrofon)">
+                  <i class="fa-solid fa-microphone"></i>
+                </button>
+                <textarea id="chat-input" rows="1" placeholder="Ketik pesan atau instruksi Anda di sini..." oninput="autoResize(this)" onkeydown="handleEnter(event)"></textarea>
+                <button class="send-btn shadow-sm" id="send-btn" onclick="sendMessage()" title="Kirim Pesan">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-2 px-1">
+                <small class="text-muted" style="font-size: 0.7rem;">Asisten Guru AI dapat melakukan kekeliruan. Harap periksa kembali sebelum dipakai di kelas.</small>
+                <small class="text-muted" style="font-size: 0.7rem;" id="speech-status"></small>
+            </div>
+        </div>
+
+    </div>
+  </div>
+
+  <script>
+    let apiKey = localStorage.getItem('gemini_api_key') || '';
+    let isWaiting = false;
+    let chatHistory = [];
+    let activeCategory = 'soal';
+    let recognition = null;
+    let isListening = false;
+    let synth = window.speechSynthesis;
+
+    // Quick Prompt Templates
+    const categoryPrompts = {
+      soal: [
+        { label: "5 Soal Pilihan Ganda IPA", prompt: "Buatkan 5 soal pilihan ganda beserta kunci jawaban dan pembahasan untuk IPA kelas 5 SD materi Rantai Makanan." },
+        { label: "Soal HOTS Matematika", prompt: "Buatkan 3 soal cerita HOTS Matematika kelas 4 SD tentang Keliling dan Luas Bangun Datar beserta langkah penyelesaiannya." },
+        { label: "Soal Isian Bahasa Indonesia", prompt: "Buatkan 5 soal isian singkat Bahasa Indonesia SMP tentang Mengidentifikasi Ide Pokok Paragraf." }
+      ],
+      game: [
+        { label: "Game Cerdas Cermat Kuis", prompt: "Rancang aturan dan 5 pertanyaan game cerdas cermat kelompok untuk siswa SD tentang Pengetahuan Umum Indonesia." },
+        { label: "Game Bisik Berantai Edukatif", prompt: "Berikan panduan game Bisik Berantai untuk pembelajaran Kosakata Bahasa Inggris di kelas." },
+        { label: "Game Roleplay Sejarah", prompt: "Buatkan skenario game bermain peran (roleplay) 10 menit tentang peristiwa Proklamasi Kemerdekaan untuk kelas 5 SD." }
+      ],
+      bacaan: [
+        { label: "Cerita Dongeng Moral", prompt: "Tuliskan sebuah cerita pendek fabel anak yang mendidik tentang kejujuran untuk siswa kelas 2 SD (sekitar 200 kata)." },
+        { label: "Teks Bacaan Sains Anak", prompt: "Buatkan teks bacaan populer sains yang mudah dipahami anak SD tentang Bagaimana Hujan Terjadi." },
+        { label: "Teks Narasi Sejarah", prompt: "Buatkan teks bacaan naratif singkat tentang Perjuangan Pangeran Diponegoro yang cocok untuk siswa SMP." }
+      ],
+      modul: [
+        { label: "Modul Ajar Kurikulum Merdeka", prompt: "Buatkan draft Modul Ajar Kurikulum Merdeka Matematika Kelas 4 materi Pecahan Senilai (Lengkap: Tujuan, Langkah Pembelajaran, Assesmen)." },
+        { label: "RPP 1 Lembar Bahasa Inggris", prompt: "Buatkan RPP 1 lembar Bahasa Inggris SMP Kelas 7 materi Greeting & Leave Taking." },
+        { label: "Rubrik Penilaian Presentasi", prompt: "Buatkan rubrik penilaian instrumen asesmen presentasi kelompok siswa beserta skala skornya." }
+      ],
+      icebreaking: [
+        { label: "Ice Breaking Tepuk Tangan", prompt: "Berikan 3 ide ice breaking variasi tepuk tangan yang menyenangkan untuk mengembalikan konsentrasi siswa dalam 3 menit." },
+        { label: "Tebak-Tebakan Logika", prompt: "Berikan 5 tebak-tebakan logika atau tebak kata yang lucu dan mendidik untuk siswa kelas." },
+        { label: "Energizer Gerak & Lagu", prompt: "Rancang aktivitas energizer fisik singkat tanpa alat untuk mencairkan suasana kelas yang ngantuk." }
+      ],
+      guruvirtual: [
+        { label: "Penjelasan Materi Tata Surya", prompt: "Halo Guru Virtual, jelaskan dengan gaya ramah dan ceria kepada siswa kelas 6 SD mengapa Pluto tidak lagi dianggap sebagai planet utama!" },
+        { label: "Motivasi Sebelum Ujian", prompt: "Halo Guru Virtual, berikan kalimat motivasi dan penyemangat 1 menit untuk siswa yang akan menghadapi Ujian Akhir Sekolah." },
+        { label: "Sapaan Pembuka Kelas", prompt: "Halo Guru Virtual, buatkan kata-kata sapaan dan pembuka kelas pagi hari yang interaktif dan penuh semangat." }
+      ],
+      literasi: [
+        { label: "Buku Resensi Novel", prompt: "Buatkan resensi singkat novel anak yang cocok untuk literasi siswa kelas 5 SD." },
+        { label: "Tips Membaca Cepat", prompt: "Berikan tips membaca cepat dan efektif untuk meningkatkan literasi siswa SMP." },
+        { label: "Daftar Bacaan Wajib", prompt: "Buatkan daftar 5 buku bacaan wajib untuk siswa kelas 6 SD beserta sinopsis singkatnya." }
+      ]
+    };
+
+    const categoryTitles = {
+      soal: '<i class="fa-solid fa-list-check text-theme-primary"></i> Asisten Guru AI - Pembuat Soal',
+      game: '<i class="fa-solid fa-gamepad text-theme-primary"></i> Asisten Guru AI - Ide Game Edukasi',
+      bacaan: '<i class="fa-solid fa-book-open-reader text-theme-primary"></i> Asisten Guru AI - Pembuat Teks Bacaan',
+      modul: '<i class="fa-solid fa-file-lines text-theme-primary"></i> Asisten Guru AI - Modul Ajar & RPP',
+      icebreaking: '<i class="fa-solid fa-icons text-theme-primary"></i> Asisten Guru AI - Generator Ice Breaking',
+      guruvirtual: '<i class="fa-solid fa-user-astronaut text-theme-primary"></i> Asisten Guru AI - Guru Virtual Interaktif',
+      literasi: '<i class="fa-solid fa-book text-theme-primary"></i> Asisten Guru AI - Literasi & Bahan Bacaan'
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+        updateClock();
+        setInterval(updateClock, 1000);
+        
+        const path = window.location.pathname;
+        if (path.includes('game.html')) switchCategory('game');
+        else if (path.includes('bacaan.html')) switchCategory('bacaan');
+        else if (path.includes('modul.html')) switchCategory('modul');
+        else if (path.includes('icebreaking.html')) switchCategory('icebreaking');
+        else if (path.includes('guruvirtual.html')) switchCategory('guruvirtual');
+        else if (path.includes('literasi.html')) switchCategory('literasi');
+        else switchCategory('soal');
+
+        setupSpeechRecognition();
+    });
+
+    function updateClock() {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        document.getElementById('header-realtime-clock').innerText = now.toLocaleDateString('id-ID', options);
+    }
+
+    function toggleMobileSidebar() { 
+        document.getElementById('mainSidebar').classList.toggle('mobile-open'); 
+        document.getElementById('sidebarOverlay').classList.toggle('active'); 
+    }
+    
+    function closeMobileSidebar() { 
+        document.getElementById('mainSidebar').classList.remove('mobile-open'); 
+        document.getElementById('sidebarOverlay').classList.remove('active'); 
+    }
+
+    function switchCategory(catKey, event) {
+        if(event && event.target.getAttribute('href') === '#') {
+            event.preventDefault();
+        }
+        
+        activeCategory = catKey;
+
+        // Update Nav UI
+        document.querySelectorAll('.sidebar .nav-link').forEach(el => el.classList.remove('active'));
+        const activeNav = document.getElementById(`menu-${catKey}`);
+        if(activeNav) activeNav.classList.add('active');
+
+        // Update Title & Quick Prompts
+        document.getElementById('current-category-title').innerHTML = categoryTitles[catKey] || categoryTitles.soal;
+        renderQuickPrompts(catKey);
+
+        closeMobileSidebar();
+    }
+
+    function renderQuickPrompts(catKey) {
+        const container = document.getElementById('quick-prompts-container');
+        container.innerHTML = '';
+        const prompts = categoryPrompts[catKey] || categoryPrompts.soal;
+
+        prompts.forEach(item => {
+            const btn = document.createElement('button');
+            btn.className = 'quick-prompt-btn';
+            btn.innerHTML = `<i class="fa-solid fa-sparkles"></i> ${item.label}`;
+            btn.onclick = () => usePrompt(item.prompt);
+            container.appendChild(btn);
+        });
+    }
+
+    function usePrompt(text) {
+        const input = document.getElementById('chat-input');
+        input.value = text;
+        autoResize(input);
+        input.focus();
+    }
+
+    function requestApiKey() {
+        Swal.fire({
+            title: 'Konfigurasi API Key Gemini',
+            html: 'Masukkan Gemini API Key Anda.<br><a href="https://aistudio.google.com/api-keys" target="_blank" class="text-primary text-decoration-none small">Dapatkan API Key Gratis di Google AI Studio</a>',
+            input: 'password',
+            inputPlaceholder: 'AIzaSy...',
+            inputValue: apiKey,
+            showCancelButton: true,
+            confirmButtonText: '<i class="fa-solid fa-save me-1"></i> Simpan Key',
+            cancelButtonText: 'Batal',
+            confirmButtonColor: 'var(--theme-primary)',
+            inputValidator: (value) => {
+                if (!value) return 'API Key tidak boleh kosong!';
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                apiKey = result.value.trim();
+                localStorage.setItem('gemini_api_key', apiKey);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Tersimpan!',
+                    text: 'API Key berhasil disimpan.',
+                    confirmButtonColor: 'var(--theme-primary)'
+                });
+            }
+        });
+    }
+
+    function autoResize(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = (textarea.scrollHeight < 120 ? textarea.scrollHeight : 120) + 'px';
+        if(textarea.value.trim() === '') textarea.style.height = 'auto';
+    }
+
+    function handleEnter(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    }
+
+    function confirmResetChat(e) {
+        if(e) e.preventDefault();
+        Swal.fire({
+            title: 'Mulai Sesi Baru?',
+            text: "Riwayat obrolan saat ini akan dibersihkan.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#0f766e',
+            cancelButtonColor: '#94a3b8',
+            confirmButtonText: 'Ya, Bersihkan',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const chatMessages = document.getElementById('chat-messages');
+                const welcomeMsg = chatMessages.firstElementChild.outerHTML;
+                chatMessages.innerHTML = welcomeMsg;
+                chatHistory = [];
+                if(synth) synth.cancel();
+            }
+        });
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (!text || isWaiting) return;
+
+        if (!apiKey) {
+            requestApiKey();
+            return;
+        }
+
+        appendMessage('user', text);
+        input.value = '';
+        input.style.height = 'auto';
+        
+        isWaiting = true;
+        input.disabled = true;
+        document.getElementById('send-btn').disabled = true;
+
+        const typingId = 'typing-' + Date.now();
+        appendTypingIndicator(typingId);
+        scrollToBottom();
+
+        const aiResponseHTML = await fetchGeminiResponse(text);
+        
+        const typingEl = document.getElementById(typingId);
+        if(typingEl) typingEl.remove();
+        
+        const msgId = 'msg-' + Date.now();
+        appendMessage('bot', aiResponseHTML, true, msgId);
+        
+        isWaiting = false;
+        input.disabled = false;
+        document.getElementById('send-btn').disabled = false;
+        input.focus();
+        scrollToBottom();
+
+        if (activeCategory === 'guruvirtual') {
+            const rawText = extractRawText(aiResponseHTML);
+            speakText(rawText);
+        }
+    }
+
+    async function fetchGeminiResponse(userText) {
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+        
+        const contents = chatHistory.map(msg => ({
+            role: msg.role,
+            parts: [{ text: msg.text }]
+        }));
+        
+        contents.push({ role: 'user', parts: [{ text: userText }] });
+
+        const systemInstructions = {
+          soal: "Anda adalah Asisten Guru AI spesialis pembuatan soal ujian, kuis, dan instrumen evaluasi pembelajaran di sekolah. Berikan soal yang terstruktur, lengkap dengan kunci jawaban, kisi-kisi singkat, dan bobot nilai jika relevan.",
+          game: "Anda adalah Asisten Guru AI spesialis ide game edukasi interaktif kelas. Berikan aturan main, jumlah pemain, bahan yang dibutuhkan, serta langkah-langkah permainan secara ceria dan rinci.",
+          bacaan: "Anda adalah Asisten Guru AI pembuat materi dan teks bacaan narasi, edukasi, cerita pendek, atau ringkasan materi sekolah. Gunakan bahasa yang sesuai dengan tingkat usia siswa.",
+          modul: "Anda adalah Asisten Guru AI ahli penyusunan RPP dan Modul Ajar Kurikulum Merdeka. Sajikan komponen modul secara rapi, jelas, dan siap pakai oleh guru.",
+          icebreaking: "Anda adalah Asisten Guru AI spesialis ice breaking dan energizer kelas. Berikan instruksi permainan singkat 3-5 menit yang menghibur dan mengembalikan fokus siswa.",
+          guruvirtual: "Anda adalah Guru Virtual AI yang ramah, hangat, penuh perhatian, dan edukatif. Sapalah seperti guru sejati yang sedang berbicara langsung kepada murid atau rekan guru di kelas.",
+          literasi: "Anda adalah Asisten Guru AI spesialis literasi dan pengembangan minat baca siswa. Berikan rekomendasi bacaan, resensi buku, tips membaca, dan materi literasi yang menarik dan edukatif untuk semua jenjang pendidikan."
+        };
+
+        const instruction = systemInstructions[activeCategory] || systemInstructions.soal;
+
+        const payload = {
+            systemInstruction: {
+                parts: [{ text: `${instruction} Gunakan format markdown, poin-poin tebal, dan tata bahasa Indonesia yang baik, efektif, dan profesional.` }]
+            },
+            contents: contents
+        };
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('API Error:', data.error);
+                if (data.error.code === 400 && data.error.message.includes('API key not valid')) {
+                    apiKey = '';
+                    localStorage.removeItem('gemini_api_key');
+                    return "<div class='text-danger'><i class='fa-solid fa-triangle-exclamation me-1'></i> Error: API Key tidak valid. Silakan atur ulang API Key Anda.</div>";
+                }
+                return "<div class='text-danger'><i class='fa-solid fa-triangle-exclamation me-1'></i> Kesalahan Server AI: " + data.error.message + "</div>";
+            }
+
+            if (data.candidates && data.candidates.length > 0) {
+                const aiText = data.candidates[0].content.parts[0].text;
+                
+                chatHistory.push({ role: 'user', text: userText });
+                chatHistory.push({ role: 'model', text: aiText });
+                if(chatHistory.length > 12) chatHistory = chatHistory.slice(chatHistory.length - 12);
+                
+                return marked.parse(aiText);
+            }
+            return "Maaf, Asisten Guru AI tidak dapat memproses tanggapan saat ini.";
+
+        } catch (error) {
+            console.error("Fetch error:", error);
+            return "<div class='text-danger'><i class='fa-solid fa-wifi me-1'></i> Gangguan jaringan. Pastikan perangkat terhubung ke internet.</div>";
+        }
+    }
+
+    function appendMessage(sender, text, isHTML = false, msgId = null) {
+        const chatMessages = document.getElementById('chat-messages');
+        const wrapper = document.createElement('div');
+        wrapper.className = `msg-wrapper ${sender}`;
+        if(msgId) wrapper.id = msgId;
+        
+        const avatarHtml = sender === 'bot' 
+            ? `<div class="msg-avatar shadow-sm"><i class="fa-solid fa-robot"></i></div>` 
+            : `<div class="msg-avatar shadow-sm"><i class="fa-solid fa-user"></i></div>`;
+        
+        const content = isHTML ? text : text.replace(/\n/g, '<br>');
+
+        let actionButtons = '';
+        if (sender === 'bot') {
+            actionButtons = `
+                <div class="msg-actions">
+                    <button class="msg-action-btn" onclick="copyMessageText(this)" title="Salin Teks"><i class="fa-regular fa-copy me-1"></i>Salin</button>
+                    <button class="msg-action-btn" onclick="speakMessageFromBtn(this)" title="Bacakan Suara"><i class="fa-solid fa-volume-high me-1"></i>Baca</button>
+                </div>
+            `;
+        }
+
+        const bubbleHtml = `<div class="msg-bubble">${content}${actionButtons}</div>`;
+
+        if (sender === 'bot') {
+            wrapper.innerHTML = avatarHtml + bubbleHtml;
+        } else {
+            wrapper.innerHTML = bubbleHtml + avatarHtml;
+        }
+
+        chatMessages.appendChild(wrapper);
+        scrollToBottom();
+    }
+
+    function appendTypingIndicator(id) {
+        const chatMessages = document.getElementById('chat-messages');
+        const wrapper = document.createElement('div');
+        wrapper.id = id;
+        wrapper.className = `msg-wrapper bot`;
+        wrapper.innerHTML = `
+            <div class="msg-avatar shadow-sm"><i class="fa-solid fa-robot"></i></div>
+            <div class="msg-bubble d-flex align-items-center">
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+        `;
+        chatMessages.appendChild(wrapper);
+    }
+
+    function scrollToBottom() {
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function setupSpeechRecognition() {
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'id-ID';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                isListening = true;
+                document.getElementById('mic-btn').classList.add('active');
+                document.getElementById('speech-status').innerText = 'Mendengarkan suara...';
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                const input = document.getElementById('chat-input');
+                input.value = (input.value + ' ' + transcript).trim();
+                autoResize(input);
+            };
+
+            recognition.onerror = (e) => {
+                console.error("Speech error", e);
+                stopListening();
+            };
+
+            recognition.onend = () => {
+                stopListening();
+            };
+        } else {
+            document.getElementById('mic-btn').style.display = 'none';
+        }
+    }
+
+    function toggleVoiceInput() {
+        if (!recognition) return;
+        if (isListening) {
+            recognition.stop();
+        } else {
+            recognition.start();
+        }
+    }
+
+    function stopListening() {
+        isListening = false;
+        document.getElementById('mic-btn').classList.remove('active');
+        document.getElementById('speech-status').innerText = '';
+    }
+
+    function speakText(text) {
+        if (!synth) return;
+        synth.cancel();
+        
+        if(!text.trim()) return;
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'id-ID';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        
+        synth.speak(utterance);
+    }
+
+    function speakMessageFromBtn(btn) {
+        const bubble = btn.closest('.msg-bubble');
+        const rawText = extractRawText(bubble.innerHTML);
+        speakText(rawText);
+    }
+
+    function extractRawText(htmlContent) {
+        const temp = document.createElement('div');
+        temp.innerHTML = htmlContent;
+        const actions = temp.querySelector('.msg-actions');
+        if(actions) actions.remove();
+        return temp.textContent || temp.innerText || "";
+    }
+
+    function copyMessageText(btn) {
+        const bubble = btn.closest('.msg-bubble');
+        const rawText = extractRawText(bubble.innerHTML);
+        
+        const tempTextArea = document.createElement('textarea');
+        tempTextArea.value = rawText;
+        document.body.appendChild(tempTextArea);
+        tempTextArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempTextArea);
+
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="fa-solid fa-check text-success me-1"></i>Tersalin`;
+        setTimeout(() => { btn.innerHTML = origHtml; }, 2000);
+    }
+  </script>
+</body>
+</html>

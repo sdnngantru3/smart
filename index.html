@@ -25,6 +25,16 @@
     .voice-control-btn.voice-active { background: #2563eb !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37,99,235,.18); }
     .voice-control-btn.voice-active i { animation: voicePulse 1.1s ease-in-out infinite; }
     @keyframes voicePulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+
+    .ai-chat-theme-slate { background: #0f172a; color: #e2e8f0; }
+    .ai-chat-theme-indigo { background: linear-gradient(135deg,#111827 0%,#312e81 55%,#4338ca 100%); color: #eef2ff; }
+    .ai-chat-theme-emerald { background: linear-gradient(135deg,#022c22 0%,#064e3b 55%,#065f46 100%); color: #ecfdf5; }
+    .ai-chat-theme-rose { background: linear-gradient(135deg,#1f0a12 0%,#4c0519 55%,#881337 100%); color: #fff1f2; }
+    .ai-chat-theme-amber { background: linear-gradient(135deg,#1c1917 0%,#78350f 55%,#92400e 100%); color: #fffbeb; }
+    .ai-chat-theme-dark { background: #020617; color: #f8fafc; }
+    .ai-suggestion { border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.08); padding: 7px 10px; border-radius: 999px; transition: .15s; }
+    .ai-suggestion:hover { background: rgba(255,255,255,.16); }
+    .ai-chat-theme-indigo .ai-welcome-card,.ai-chat-theme-emerald .ai-welcome-card,.ai-chat-theme-rose .ai-welcome-card,.ai-chat-theme-amber .ai-welcome-card,.ai-chat-theme-dark .ai-welcome-card,.ai-chat-theme-slate .ai-welcome-card { background: rgba(15,23,42,.45); }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
@@ -269,6 +279,7 @@ function handleRequest(action, params, body) {
     else if (action === 'saveOpenAiApiKey') result = saveOpenAiApiKey(body || {});
     else if (action === 'haloHalo') result = haloHalo(body || {});
     else if (action === 'haloHaloConfirm') result = haloHaloConfirm(body || {});
+    else if (action === 'generateAiImage') result = generateAiImage(body || {});
     else if (action === 'syncOfflineData') result = syncOfflineData(body || {});
     else if (action === 'resetDatabase') result = clearAllData();
     else if (action === 'quizGetConfig') result = quizGetConfig(body.spreadsheetId || REQUEST_SPREADSHEET_ID);
@@ -304,7 +315,7 @@ function getDatabaseSchemas() {
     'Pengumuman': ['ID', 'Tanggal', 'Judul', 'Isi', 'TargetRole', 'TargetKelas', 'Pembuat'],
     'Aktivitas': ['ID', 'Waktu', 'User', 'Aktivitas'],
     'Game': ['ID', 'NamaGame', 'Pemain', 'Skor', 'Waktu'],
-    'MenuGuru': ['ID', 'NamaMenu', 'Ikon', 'Tipe', 'Target', 'TargetTab', 'Urutan', 'Status', 'CreatedAt', 'UpdatedAt']
+    'MenuGuru': ['ID', 'NamaMenu', 'Ikon', 'Tipe', 'Target', 'TargetTab', 'Urutan', 'Status', 'DashboardGuru', 'DashboardSiswa', 'CreatedAt', 'UpdatedAt']
   };
 }
 
@@ -860,6 +871,8 @@ function getMenuGuru(body) {
       TargetTab: normalizeMenuTargetTab_(m.TargetTab),
       Urutan: Number(m.Urutan || 0),
       Status: normalizeMenuStatus_(m.Status),
+      DashboardGuru: m.DashboardGuru === '' || m.DashboardGuru == null ? true : String(m.DashboardGuru).toLowerCase() !== 'false',
+      DashboardSiswa: m.DashboardSiswa === true || String(m.DashboardSiswa || '').toLowerCase() === 'true',
       CreatedAt: m.CreatedAt || '',
       UpdatedAt: m.UpdatedAt || ''
     };
@@ -886,6 +899,8 @@ function saveMenuGuru(body) {
   var target = String(body.Target || '').trim();
   var targetTab = normalizeMenuTargetTab_(body.TargetTab);
   var status = normalizeMenuStatus_(body.Status);
+  var dashboardGuru = body.DashboardGuru === false || String(body.DashboardGuru || '').toLowerCase() === 'false' ? false : true;
+  var dashboardSiswa = body.DashboardSiswa === true || String(body.DashboardSiswa || '').toLowerCase() === 'true';
   var id = String(body.ID || '').trim();
 
   if (!nama) return {success:false, message:'Nama Menu wajib diisi.', data:null};
@@ -920,6 +935,7 @@ function saveMenuGuru(body) {
   var record = {
     ID:id, NamaMenu:nama, Ikon:ikon, Tipe:tipe, Target:target,
     TargetTab:targetTab, Urutan:urutan, Status:status,
+    DashboardGuru:dashboardGuru, DashboardSiswa:dashboardSiswa,
     CreatedAt:existingCreatedAt || now, UpdatedAt:now
   };
   var row = headers.map(function(h){ return record[h] !== undefined ? record[h] : ''; });
@@ -985,6 +1001,14 @@ function ensureDatabaseSheetsForSpreadsheet_(ss) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e2e8f0');
       sheet.setFrozenRows(1);
+    } else if (sheetName === 'MenuGuru') {
+      var currentHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0].map(String);
+      headers.forEach(function(h) {
+        if (currentHeaders.indexOf(h) < 0) {
+          sheet.getRange(1, sheet.getLastColumn() + 1).setValue(h).setFontWeight('bold').setBackground('#e2e8f0');
+          currentHeaders.push(h);
+        }
+      });
     }
   });
 }
@@ -1559,12 +1583,13 @@ function callHaloOpenAI_(instruction, context) {
   var system = [
     'Anda adalah Halo-Halo, asisten operasional LMS sekolah untuk guru Indonesia.',
     'Balas HANYA JSON valid tanpa markdown.',
-    'Format: {"action":"none|open_view|search_student|input_grade","reply":"...","view":"","student":{"NIS":"","Nama":"","Kelas":""},"intent":{"NIS":"","NamaSiswa":"","KodeMapel":"","NamaMapel":"","Kelas":"","JenisPenilaian":"","Nilai":0}}',
+    'Format: {"action":"none|open_view|search_student|input_grade|generate_image","reply":"...","view":"","prompt":"","student":{"NIS":"","Nama":"","Kelas":""},"intent":{"NIS":"","NamaSiswa":"","KodeMapel":"","NamaMapel":"","Kelas":"","JenisPenilaian":"","Nilai":0}}',
     'Jangan pernah mengarang NIS, nama siswa, kode mapel, atau nilai. Gunakan data konteks yang diberikan.',
     'Untuk navigasi guru gunakan view: dashboard, data-siswa, master-mapel, absensi, penilaian, hasil-belajar, jurnal, pengumuman, asisten-ai.',
     'Untuk input nilai: NIS dan Nilai wajib. Jika jenis penilaian belum jelas, tanyakan. Jika mapel belum jelas, tanyakan; jangan menebak.',
     'Nilai harus angka 0 sampai 100. Pahami angka Bahasa Indonesia seperti delapan puluh=80, sembilan puluh lima=95, seratus=100.',
     'Jika pengguna mengucapkan "absen 1" sebagai jenis penilaian, pertahankan sebagai "Absen 1".',
+    'Jika guru meminta membuat gambar, gunakan action generate_image dan isi prompt gambar yang lengkap dalam Bahasa Indonesia; jangan membuat gambar untuk pertanyaan biasa.'
     'Jawaban reply singkat dan natural dalam Bahasa Indonesia.'
   ].join('\n');
   var payload = {
@@ -1632,6 +1657,34 @@ function haloHalo(body) {
     return { success: true, message: 'OK', data: ai };
   } catch (e) {
     return { success: false, message: e.message || String(e), data: null };
+  }
+}
+
+function generateAiImage(body) {
+  body = body || {};
+  var username = String(body.username || '').trim();
+  var role = String(body.role || '').trim().toLowerCase();
+  var prompt = String(body.prompt || '').trim();
+  if (role !== 'guru' || !validateGuruForAI_(username)) return {success:false, message:'Pembuatan gambar hanya dapat digunakan oleh Guru aktif.', data:null};
+  if (!prompt) return {success:false, message:'Deskripsi gambar wajib diisi.', data:null};
+  if (prompt.length > 2000) return {success:false, message:'Deskripsi gambar maksimal 2000 karakter.', data:null};
+  if (!consumeHaloQuota_(username)) return {success:false, message:'Kuota AI hari ini sudah habis. Batas harian: ' + HALO_AI_DAILY_LIMIT + ' permintaan.', data:null};
+  var apiKey = getOpenAiApiKey_();
+  if (!apiKey) return {success:false, message:'API Key OpenAI belum diatur. Simpan API Key terlebih dahulu.', data:null};
+  try {
+    var payload = { model:'gpt-image-2', prompt:prompt, size:'1024x1024', quality:'medium' };
+    var response = UrlFetchApp.fetch('https://api.openai.com/v1/images/generations', {
+      method:'post', contentType:'application/json', headers:{Authorization:'Bearer '+apiKey},
+      payload:JSON.stringify(payload), muteHttpExceptions:true
+    });
+    var code=response.getResponseCode(), text=response.getContentText();
+    if(code<200 || code>=300) throw new Error('OpenAI Image API error '+code+': '+text.substring(0,500));
+    var json=JSON.parse(text), item=(json.data&&json.data[0])||{};
+    if(item.b64_json) return {success:true,message:'Gambar berhasil dibuat.',data:{dataUrl:'data:image/png;base64,'+item.b64_json, prompt:prompt}};
+    if(item.url) return {success:true,message:'Gambar berhasil dibuat.',data:{url:item.url, prompt:prompt}};
+    throw new Error('OpenAI tidak mengembalikan gambar.');
+  } catch(e) {
+    return {success:false,message:e.message||String(e),data:null};
   }
 }
 
@@ -2453,7 +2506,7 @@ function clearAllData() {
         spreadsheetId: config.spreadsheetId, includeInactive: false
       });
       if (!res.success) { holder.innerHTML = ''; return; }
-      customGuruMenus = Array.isArray(res.data) ? res.data : [];
+      customGuruMenus = (Array.isArray(res.data) ? res.data : []).filter(menu => menu.DashboardGuru !== false);
       holder.innerHTML = '';
       customGuruMenus.forEach(menu => {
         const safeId = String(menu.ID || '').replace(/[^a-zA-Z0-9_-]/g,'');
@@ -2469,6 +2522,51 @@ function clearAllData() {
         const label = document.createElement('span');
         label.className = 'truncate';
         label.textContent = menu.NamaMenu || 'Menu';
+        btn.appendChild(icon); btn.appendChild(label);
+        btn.onclick = () => openCustomGuruMenu(menu);
+        holder.appendChild(btn);
+      });
+    }
+
+    async function loadSiswaCustomMenus() {
+      if (!currentUser || String(currentUser.Role).toLowerCase() !== 'siswa') return;
+      const holder = document.getElementById('siswa-custom-menu-list');
+      if (!holder) return;
+      // Gunakan action API yang memang tersedia di Code.gs aktif.
+      // getSheetData bukan action publik, sehingga jangan memanggilnya langsung.
+      // getMenuGuru membaca seluruh kolom MenuGuru termasuk DashboardSiswa.
+      const res = await apiCall('getMenuGuru', {}, {
+        spreadsheetId: config.spreadsheetId,
+        includeInactive: true
+      });
+      if (!res.success) { holder.innerHTML = ''; return; }
+      const menus = (Array.isArray(res.data) ? res.data : []).map(menu => ({
+        ID: String(menu.ID || ''),
+        NamaMenu: String(menu.NamaMenu || ''),
+        Ikon: String(menu.Ikon || 'fa-solid fa-link'),
+        Tipe: String(menu.Tipe || 'file'),
+        Target: String(menu.Target || ''),
+        TargetTab: String(menu.TargetTab || 'same'),
+        Status: String(menu.Status || 'aktif'),
+        DashboardSiswa: menu.DashboardSiswa === true || String(menu.DashboardSiswa || '').toLowerCase() === 'true'
+      })).filter(menu => {
+        const aktif = String(menu.Status || '').trim().toLowerCase() === 'aktif';
+        const tampilSiswa = menu.DashboardSiswa === true;
+        const isPerpustakaan = String(menu.NamaMenu || '').trim().toLowerCase() === 'perpustakaan';
+        return aktif && (tampilSiswa || isPerpustakaan);
+      });
+      holder.innerHTML = '';
+      menus.forEach(menu => {
+        const safeId = String(menu.ID || '').replace(/[^a-zA-Z0-9_-]/g,'');
+        const btn = document.createElement('button');
+        btn.id = 'nav-custom-siswa-' + safeId;
+        btn.className = 'nav-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition';
+        btn.title = menu.Target || '';
+        const icon = document.createElement('span'); icon.className = 'w-4 text-center text-indigo-600';
+        const iconValue = String(menu.Ikon || '').trim();
+        if (/^fa-(solid|regular|brands)\s+fa-[a-z0-9-]+$/i.test(iconValue)) icon.innerHTML = menuGuruIconHtml(iconValue);
+        else icon.textContent = iconValue || '🔗';
+        const label = document.createElement('span'); label.className = 'truncate'; label.textContent = menu.NamaMenu || 'Menu';
         btn.appendChild(icon); btn.appendChild(label);
         btn.onclick = () => openCustomGuruMenu(menu);
         holder.appendChild(btn);
@@ -2521,7 +2619,8 @@ function clearAllData() {
         const info = document.createElement('div'); info.className = 'flex-1 min-w-0';
         const name = document.createElement('div'); name.className = 'text-xs font-bold text-slate-800 truncate'; name.textContent = menu.NamaMenu || '';
         const target = document.createElement('div'); target.className = 'text-[10px] text-slate-400 truncate mt-0.5';
-        target.textContent = `${String(menu.Tipe).toUpperCase()} • ${menu.Target} • ${String(menu.TargetTab || 'same') === 'blank' ? 'Tab baru' : 'Tab yang sama'}`;
+        const audience = [menu.DashboardGuru !== false ? 'Guru' : '', menu.DashboardSiswa === true ? 'Siswa' : ''].filter(Boolean).join(' + ') || 'Tidak ditampilkan';
+        target.textContent = `${String(menu.Tipe).toUpperCase()} • ${menu.Target} • ${String(menu.TargetTab || 'same') === 'blank' ? 'Tab baru' : 'Tab yang sama'} • ${audience}`;
         info.appendChild(name); info.appendChild(target);
 
         const status = document.createElement('span');
@@ -2580,6 +2679,14 @@ function clearAllData() {
               <div><label class="block text-xs font-semibold text-slate-700 mb-1">Buka di</label><select id="menu-target-tab" class="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-300"><option value="same" ${String(menu.TargetTab || 'same')==='same'?'selected':''}>Tab yang sama</option><option value="blank" ${String(menu.TargetTab || '')==='blank'?'selected':''}>Tab baru</option></select></div>
               <div><label class="block text-xs font-semibold text-slate-700 mb-1">Status</label><select id="menu-status" class="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-300"><option value="aktif" ${String(menu.Status || 'aktif')==='aktif'?'selected':''}>Aktif</option><option value="nonaktif" ${String(menu.Status || '')==='nonaktif'?'selected':''}>Nonaktif</option></select></div>
             </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <p class="text-xs font-bold text-slate-700 mb-2"><i class="fa-solid fa-display text-indigo-600 mr-1"></i> Tampilkan di Dashboard</p>
+              <div class="flex flex-wrap gap-4 text-xs">
+                <label class="inline-flex items-center gap-2 cursor-pointer"><input id="menu-dashboard-guru" type="checkbox" class="w-4 h-4 accent-indigo-600" ${menu.DashboardGuru !== false ? 'checked' : ''}><span>Dashboard Guru</span></label>
+                <label class="inline-flex items-center gap-2 cursor-pointer"><input id="menu-dashboard-siswa" type="checkbox" class="w-4 h-4 accent-indigo-600" ${menu.DashboardSiswa === true ? 'checked' : ''}><span>Dashboard Siswa</span></label>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-2">Pilih minimal satu dashboard agar menu dapat digunakan.</p>
+            </div>
             <div class="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] text-amber-800"><i class="fa-solid fa-circle-info mr-1"></i> File seperti <b>kalender.html</b> harus ikut di-upload ke repository GitHub Pages.</div>
             <div class="flex justify-end gap-2 pt-2"><button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">Batal</button><button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"><i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Menu</button></div>
           </form>
@@ -2595,6 +2702,9 @@ function clearAllData() {
       const target = document.getElementById('menu-target').value.trim();
       if (tipe === 'link' && !/^https?:\/\//i.test(target)) { showToast('URL Link harus diawali http:// atau https://.', 'warning'); return; }
       if (/^\s*(javascript|data|vbscript):/i.test(target)) { showToast('Target menu tidak aman.', 'warning'); return; }
+      const dashboardGuru = !!document.getElementById('menu-dashboard-guru').checked;
+      const dashboardSiswa = !!document.getElementById('menu-dashboard-siswa').checked;
+      if (!dashboardGuru && !dashboardSiswa) { showToast('Pilih minimal satu dashboard: Guru atau Siswa.', 'warning'); return; }
       const payload = {
         ID: document.getElementById('menu-id').value.trim(),
         NamaMenu: document.getElementById('menu-nama').value.trim(),
@@ -2602,6 +2712,7 @@ function clearAllData() {
         Tipe: tipe, Target: target,
         TargetTab: document.getElementById('menu-target-tab').value,
         Status: document.getElementById('menu-status').value,
+        DashboardGuru: dashboardGuru, DashboardSiswa: dashboardSiswa,
         username: currentUser.Username, role: currentUser.Role, spreadsheetId: config.spreadsheetId
       };
       if (!payload.NamaMenu || !payload.Target) { showToast('Nama Menu dan Target wajib diisi.', 'warning'); return; }
@@ -3332,12 +3443,17 @@ function clearAllData() {
           <button onclick="navigateTo('pengumuman-siswa')" class="nav-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition" id="nav-pengumuman-siswa">
             <i class="fa-solid fa-bullhorn w-4 text-center"></i> Pengumuman
           </button>
+          <div class="pt-2 mt-2 border-t border-slate-100">
+            <div class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2"><i class="fa-solid fa-layer-group"></i> Menu Tambahan</div>
+            <div id="siswa-custom-menu-list" class="space-y-1"></div>
+          </div>
         `;
+        loadSiswaCustomMenus();
       }
     }
 
     function openKelaskuLink() {
-      window.open('https://belajar-teknologi.github.io/menuju_digital/asisten.html', '_blank', 'noopener,noreferrer');
+      window.open('asisten.html', '_blank', 'noopener,noreferrer');
     }
 
     function openKuisPage() {
@@ -3465,6 +3581,7 @@ function clearAllData() {
               <div>
                 <p class="text-xs text-slate-500 font-medium">Hadir Hari Ini</p>
                 <h4 id="stat-absensi-count" class="text-xl font-bold text-slate-800">...</h4>
+                <p id="stat-absensi-date" class="text-[9px] text-slate-400 mt-0.5"></p>
               </div>
             </div>
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
@@ -3479,12 +3596,16 @@ function clearAllData() {
           <!-- Dynamic Charts Section -->
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-              <h3 class="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-chart-bar text-indigo-600"></i> Rekap Kehadiran Siswa</h3>
-              <canvas id="chart-attendance" class="w-full max-h-60"></canvas>
+              <h3 class="text-sm font-bold text-slate-800 mb-1 flex items-center gap-2"><i class="fa-solid fa-ranking-star text-amber-500"></i> Rangking 10 Besar Siswa</h3>
+              <p class="text-[10px] text-slate-400 mb-4">Berdasarkan rata-rata nilai setiap mata pelajaran per siswa.</p>
+              <div id="ranking-empty" class="hidden text-xs text-slate-400 py-8 text-center">Belum ada data nilai siswa.</div>
+              <canvas id="chart-ranking" class="w-full max-h-72"></canvas>
             </div>
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-              <h3 class="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-chart-line text-indigo-600"></i> Distribusi Nilai Siswa</h3>
-              <canvas id="chart-grades" class="w-full max-h-60"></canvas>
+              <h3 class="text-sm font-bold text-slate-800 mb-1 flex items-center gap-2"><i class="fa-solid fa-chart-line text-indigo-600"></i> Rata-Rata Nilai Kelas per Mata Pelajaran</h3>
+              <p class="text-[10px] text-slate-400 mb-4">Rata-rata dihitung dari rata-rata nilai tiap siswa pada masing-masing mapel.</p>
+              <div id="grades-empty" class="hidden text-xs text-slate-400 py-8 text-center">Belum ada data nilai per mata pelajaran.</div>
+              <canvas id="chart-grades" class="w-full max-h-72"></canvas>
             </div>
           </div>
         </div>
@@ -3495,47 +3616,236 @@ function clearAllData() {
         apiCall('getStudents'), apiCall('getSubjects'), apiCall('getAttendance'), apiCall('getGrades')
       ]);
 
-      const students = studentsRes.data || [];
-      const subjects = subjectsRes.data || [];
-      const attendance = attendanceRes.data || [];
-      const grades = gradesRes.data || [];
+      const allStudents = Array.isArray(studentsRes.data) ? studentsRes.data : [];
+      const allSubjects = Array.isArray(subjectsRes.data) ? subjectsRes.data : [];
+      const attendance = Array.isArray(attendanceRes.data) ? attendanceRes.data : [];
+      const allGrades = Array.isArray(gradesRes.data) ? gradesRes.data : [];
+      const teacherClass = String(currentUser && currentUser.Kelas || '').trim();
+
+      // Dashboard Guru difokuskan pada kelas yang sedang ditangani guru.
+      // Jika kelas guru kosong, gunakan seluruh data sebagai fallback.
+      // Pencocokan kelas dibuat toleran terhadap variasi penulisan, misalnya
+      // VII-A, VII A, Kelas VII-A, 7-A, atau 7 A. Ini penting agar statistik
+      // tidak menjadi 0 hanya karena format kelas di Users/Siswa/Nilai berbeda.
+      const romanGradeToArabic = (value) => {
+        const roman = String(value || '').toUpperCase();
+        const map = {XII:12, XI:11, X:10, IX:9, VIII:8, VII:7, VI:6, V:5, IV:4, III:3, II:2, I:1};
+        for (const key of Object.keys(map)) {
+          if (roman.startsWith(key)) return String(map[key]) + roman.slice(key.length);
+        }
+        return roman;
+      };
+      const normalizeClass = (value) => {
+        let s = String(value || '').trim().toUpperCase();
+        if (!s) return '';
+        s = s.replace(/\bKELAS\b/g, ' ').replace(/[^A-Z0-9]/g, '');
+        s = romanGradeToArabic(s);
+        // Bentuk 7A / 7B dibuat setara dengan 7-A / 7 B.
+        const m = s.match(/^(1[0-2]|[1-9])([A-Z])$/);
+        return m ? (m[1] + '-' + m[2]) : s;
+      };
+      const classMatch = (value, target) => {
+        const a = normalizeClass(value);
+        const b = normalizeClass(target);
+        if (!b) return true;
+        if (!a) return false;
+        return a === b;
+      };
+
+      let students = teacherClass
+        ? allStudents.filter(s => classMatch(s.Kelas, teacherClass))
+        : allStudents;
+      // Jika format kelas ternyata berbeda dan hasil filter menjadi kosong,
+      // gunakan seluruh data siswa yang dikembalikan API agar dashboard tidak
+      // menampilkan 0 palsu. Data nilai/absensi tetap dibatasi oleh NIS siswa.
+      if (teacherClass && !students.length && allStudents.length) students = allStudents;
+
+      const studentNisSet = new Set(students.map(s => String(s.NIS || '').trim()).filter(Boolean));
+
+      let subjects = teacherClass
+        ? allSubjects.filter(s => {
+            const k = String(s.Kelas || '').trim();
+            return !k || k.toLowerCase() === 'semua' || classMatch(k, teacherClass);
+          })
+        : allSubjects;
+      if (teacherClass && !subjects.length && allSubjects.length) subjects = allSubjects;
+
+      // Untuk Nilai dan Absensi, NIS adalah pengikat paling kuat karena
+      // catatan lama bisa memiliki format penulisan kelas yang berbeda.
+      const grades = allGrades.filter(g => {
+        const nis = String(g.NIS || '').trim();
+        if (studentNisSet.size) return studentNisSet.has(nis);
+        return !teacherClass || classMatch(g.Kelas, teacherClass);
+      });
+      const attendanceClass = attendance.filter(a => {
+        const nis = String(a.NIS || '').trim();
+        if (studentNisSet.size) return studentNisSet.has(nis);
+        return !teacherClass || classMatch(a.Kelas, teacherClass);
+      });
 
       document.getElementById('stat-siswa-count').innerText = students.length;
       document.getElementById('stat-mapel-count').innerText = subjects.length;
-      document.getElementById('stat-absensi-count').innerText = attendance.filter(a => a.StatusHadir === 'Hadir').length;
-      
-      const avg = grades.length ? (grades.reduce((a, b) => a + Number(b.Nilai || 0), 0) / grades.length).toFixed(1) : '0';
+
+      // HADIR HARI INI: hanya tanggal hari ini + siswa unik yang berstatus Hadir.
+      // Tidak menjumlahkan seluruh histori absensi dan tidak menggandakan siswa
+      // apabila ada lebih dari satu catatan/mapel pada hari yang sama.
+      // Gunakan tanggal lokal guru, bukan UTC. Apps Script dapat mengirim nilai
+      // tanggal Spreadsheet sebagai ISO UTC (mis. 2026-09-04T17:00:00.000Z
+      // untuk tanggal Spreadsheet 2026-09-05 di zona WIB).
+      const pad2 = n => String(n).padStart(2, '0');
+      const localDateKey = d => {
+        const x = d instanceof Date ? d : new Date(d);
+        if (Number.isNaN(x.getTime())) return '';
+        return `${x.getFullYear()}-${pad2(x.getMonth()+1)}-${pad2(x.getDate())}`;
+      };
+      const today = new Date();
+      const todayKey = localDateKey(today);
+      const attendanceToday = attendanceClass.filter(a => {
+        const rawDate = a.Tanggal ?? a.tanggal ?? a.Date ?? a.date ?? '';
+        let dateKey = '';
+        if (rawDate instanceof Date) {
+          dateKey = localDateKey(rawDate);
+        } else {
+          const text = String(rawDate).trim();
+          // Nilai tanggal dari Apps Script umumnya berbentuk ISO UTC.
+          // Parse sebagai Date agar otomatis kembali ke tanggal lokal WIB.
+          dateKey = localDateKey(text);
+          // Untuk string murni YYYY-MM-DD, pertahankan tanggal persis dari sheet.
+          if (/^\d{4}-\d{2}-\d{2}$/.test(text)) dateKey = text;
+        }
+        return dateKey === todayKey && String(a.StatusHadir || '').trim().toLowerCase() === 'hadir';
+      });
+      const presentNis = new Set(attendanceToday.map(a => String(a.NIS || '').trim()).filter(Boolean));
+      document.getElementById('stat-absensi-count').innerText = presentNis.size;
+      const absDateEl = document.getElementById('stat-absensi-date');
+      if (absDateEl) absDateEl.innerText = new Date().toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
+
+      const numericGrades = grades.map(g => Number(g.Nilai)).filter(Number.isFinite);
+      const avg = numericGrades.length ? (numericGrades.reduce((a, b) => a + b, 0) / numericGrades.length).toFixed(1) : '0';
       document.getElementById('stat-nilai-avg').innerText = avg;
       refreshGuruDashboardIdentity();
 
-      // Render Charts
-      new Chart(document.getElementById('chart-attendance'), {
-        type: 'pie',
-        data: {
-          labels: ['Hadir', 'Izin', 'Sakit', 'Alpa'],
-          datasets: [{
-            data: [
-              attendance.filter(a => a.StatusHadir === 'Hadir').length || 10,
-              attendance.filter(a => a.StatusHadir === 'Izin').length || 2,
-              attendance.filter(a => a.StatusHadir === 'Sakit').length || 1,
-              attendance.filter(a => a.StatusHadir === 'Alpa').length || 0
-            ],
-            backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444']
-          }]
-        }
+      // Nama mapel berdasarkan kode.
+      const subjectName = {};
+      subjects.forEach(m => {
+        const code = String(m.Kode || '').trim();
+        if (code) subjectName[code] = String(m.NamaMapel || code);
       });
 
-      new Chart(document.getElementById('chart-grades'), {
-        type: 'bar',
-        data: {
-          labels: ['Tugas', 'Kuis', 'UH', 'PTS', 'PAS'],
-          datasets: [{
-            label: 'Rata-rata Nilai',
-            data: [85, 88, 78, 82, 90],
-            backgroundColor: '#6366f1'
-          }]
-        }
+      // ==========================
+      // RATA-RATA KELAS PER MAPEL
+      // ==========================
+      // Langkah 1: rata-rata nilai tiap siswa untuk setiap mapel.
+      // Langkah 2: rata-rata hasil tersebut antar siswa dalam kelas.
+      const studentSubjectScores = {};
+      grades.forEach(g => {
+        const nis = String(g.NIS || '').trim();
+        const code = String(g.KodeMapel || '').trim();
+        const value = Number(g.Nilai);
+        if (!nis || !code || !Number.isFinite(value)) return;
+        if (!studentSubjectScores[nis]) studentSubjectScores[nis] = {};
+        if (!studentSubjectScores[nis][code]) studentSubjectScores[nis][code] = [];
+        studentSubjectScores[nis][code].push(value);
       });
+
+      const classSubjectBuckets = {};
+      Object.keys(studentSubjectScores).forEach(nis => {
+        Object.keys(studentSubjectScores[nis]).forEach(code => {
+          const arr = studentSubjectScores[nis][code];
+          if (!arr.length) return;
+          const studentAvg = arr.reduce((a,b) => a+b, 0) / arr.length;
+          if (!classSubjectBuckets[code]) classSubjectBuckets[code] = [];
+          classSubjectBuckets[code].push(studentAvg);
+        });
+      });
+
+      const classSubjectStats = Object.keys(classSubjectBuckets).map(code => {
+        const arr = classSubjectBuckets[code];
+        const avg = arr.reduce((a,b) => a+b, 0) / arr.length;
+        return { code, name: subjectName[code] || code, avg };
+      }).sort((a,b) => b.avg - a.avg);
+
+      // ==========================
+      // RANGKING 10 BESAR SISWA
+      // ==========================
+      // Nilai akhir siswa = rata-rata dari rata-rata setiap mapel yang dimiliki siswa.
+      const studentMap = {};
+      students.forEach(s => {
+        const nis = String(s.NIS || '').trim();
+        if (nis) studentMap[nis] = { nis, name: String(s.Nama || nis), subjectAverages: [] };
+      });
+      Object.keys(studentSubjectScores).forEach(nis => {
+        if (!studentMap[nis]) return;
+        Object.keys(studentSubjectScores[nis]).forEach(code => {
+          const arr = studentSubjectScores[nis][code];
+          if (!arr.length) return;
+          studentMap[nis].subjectAverages.push(arr.reduce((a,b) => a+b, 0) / arr.length);
+        });
+      });
+      const ranking = Object.values(studentMap)
+        .filter(s => s.subjectAverages.length)
+        .map(s => ({
+          nis: s.nis,
+          name: s.name,
+          avg: s.subjectAverages.reduce((a,b) => a+b, 0) / s.subjectAverages.length
+        }))
+        .sort((a,b) => b.avg - a.avg || a.name.localeCompare(b.name, 'id'))
+        .slice(0, 10);
+
+      const rankingCanvas = document.getElementById('chart-ranking');
+      const rankingEmpty = document.getElementById('ranking-empty');
+      if (!ranking.length) {
+        if (rankingCanvas) rankingCanvas.classList.add('hidden');
+        if (rankingEmpty) rankingEmpty.classList.remove('hidden');
+      } else {
+        new Chart(rankingCanvas, {
+          type: 'bar',
+          data: {
+            labels: ranking.map((s, i) => `${i + 1}. ${s.name}`),
+            datasets: [{
+              label: 'Rata-rata Nilai',
+              data: ranking.map(s => Number(s.avg.toFixed(1))),
+              backgroundColor: '#f59e0b',
+              borderRadius: 8
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, max: 100 } }
+          }
+        });
+        rankingCanvas.parentElement.style.height = '330px';
+      }
+
+      const gradesCanvas = document.getElementById('chart-grades');
+      const gradesEmpty = document.getElementById('grades-empty');
+      if (!classSubjectStats.length) {
+        if (gradesCanvas) gradesCanvas.classList.add('hidden');
+        if (gradesEmpty) gradesEmpty.classList.remove('hidden');
+      } else {
+        new Chart(gradesCanvas, {
+          type: 'bar',
+          data: {
+            labels: classSubjectStats.map(s => s.name),
+            datasets: [{
+              label: 'Rata-rata Nilai Kelas',
+              data: classSubjectStats.map(s => Number(s.avg.toFixed(1))),
+              backgroundColor: '#6366f1',
+              borderRadius: 8
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, max: 100 } }
+          }
+        });
+        gradesCanvas.parentElement.style.height = '330px';
+      }
     }
 
     async function ensureStudentsCache(forceRefresh = false) {
@@ -3901,7 +4211,7 @@ function clearAllData() {
         <div class="space-y-4">
           <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div><h2 class="text-xl font-bold text-slate-800">Penilaian Siswa</h2><p class="text-xs text-slate-500">Isi banyak nilai sekaligus. Nilai tidak langsung disimpan setiap kali mengetik; klik tombol Simpan Semua Nilai setelah selesai.</p></div>
-            <div class="flex flex-wrap gap-2"><button onclick="openPenilaianComponentModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus"></i> Tambah Kolom Penilaian</button><button onclick="openExcelImportModal('nilai')" class="bg-blue-600 text-white text-xs px-3 py-2 rounded-xl font-bold"><i class="fa-solid fa-file-import"></i> Import Excel</button><button onclick="downloadExcelTemplate('nilai')" class="bg-slate-700 text-white text-xs px-3 py-2 rounded-xl font-bold"><i class="fa-solid fa-file-arrow-down"></i> Template</button></div>
+            <div class="flex flex-wrap gap-2"><button onclick="openPenilaianComponentModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus"></i> Tambah Kolom Penilaian</button><button onclick="openExcelImportModal('nilai')" class="bg-blue-600 text-white text-xs px-3 py-2 rounded-xl font-bold"><i class="fa-solid fa-file-import"></i> Import Excel</button><button onclick="openNilaiTemplateMapelModal()" class="bg-slate-700 text-white text-xs px-3 py-2 rounded-xl font-bold"><i class="fa-solid fa-file-arrow-down"></i> Template Nilai</button></div>
           </div>
           <div id="penilaian-config-summary" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
           <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -4345,84 +4655,72 @@ function clearAllData() {
         return;
       }
       container.innerHTML = `
-        <div class="space-y-4 max-w-4xl mx-auto">
-          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-            <div class="flex items-center gap-3">
-              <div class="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl"><i class="fa-solid fa-robot"></i></div>
-              <div class="flex-1">
-                <h2 class="text-lg font-bold text-slate-800">Asisten AI Guru — Halo-Halo</h2>
-                <p class="text-xs text-slate-500">Ketik atau ucapkan perintah. Suara diproses di browser; hanya teks perintah yang dikirim ke AI.</p>
+        <div class="max-w-6xl mx-auto -m-2 sm:-m-4 lg:-m-6">
+          <div class="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3 sticky top-0 z-10">
+            <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-lg"><i class="fa-solid fa-robot"></i></div>
+            <div class="flex-1 min-w-[180px]"><h2 class="font-bold text-slate-800">Halo-Halo</h2><p class="text-[10px] text-slate-500">Asisten AI Guru • Chat & gambar AI</p></div>
+            <span id="ai-quota-badge" class="text-[10px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">Memuat...</span>
+            <select id="ai-theme-select" onchange="applyAiTheme(this.value)" class="text-[10px] px-2.5 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 outline-none" title="Tema chat">
+              <option value="slate">Slate</option><option value="indigo">Indigo</option><option value="emerald">Emerald</option><option value="rose">Rose</option><option value="amber">Amber</option><option value="dark">Dark</option>
+            </select>
+            <button onclick="newAiChat()" class="text-[10px] px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-semibold"><i class="fa-solid fa-plus mr-1"></i>Chat baru</button>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-0">
+            <section class="min-w-0">
+              <div id="ai-chat-box" class="ai-chat-theme-slate min-h-[58vh] max-h-[68vh] overflow-y-auto px-4 sm:px-8 py-6 space-y-5 custom-scrollbar">
+                <div class="ai-welcome-card max-w-3xl mx-auto rounded-3xl p-5 border border-white/10 shadow-sm">
+                  <div class="text-2xl mb-2">🤖</div><div class="font-bold text-lg">Halo, Guru!</div>
+                  <p class="text-sm opacity-80 mt-1">Saya bisa membantu navigasi, data siswa, penilaian, dan membuat gambar pembelajaran.</p>
+                  <div class="flex flex-wrap gap-2 mt-4 text-[11px]"><button onclick="setAiPrompt('Buka master mapel')" class="ai-suggestion">Buka master mapel</button><button onclick="setAiPrompt('Cari siswa NIS 1')" class="ai-suggestion">Cari siswa</button><button onclick="setAiPrompt('Buat gambar tata surya untuk materi IPA kelas 6')" class="ai-suggestion">Buat gambar</button></div>
+                </div>
               </div>
-              <span id="ai-quota-badge" class="text-[10px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">Memuat kuota...</span>
-            </div>
-            <div class="mt-4 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
-              <input id="openai-api-key" type="password" placeholder="OpenAI API Key (disimpan di Script Properties)" class="text-xs p-3 rounded-xl border border-slate-300 outline-none">
-              <button onclick="saveOpenAiKeyFromUI()" class="bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold">Simpan API Key</button>
-            </div>
-            <div class="mt-3 bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-[11px] text-indigo-800">
-              <div class="font-bold mb-1"><i class="fa-solid fa-circle-question"></i> Bingung mendapatkan API Key?</div>
-              <p>API Key dibuat di dashboard OpenAI, bukan di ChatGPT biasa. Klik tombol berikut untuk membuka halaman resmi pembuatan API Key:</p>
-              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 mt-2 bg-white border border-indigo-200 text-indigo-700 px-3 py-2 rounded-lg font-bold hover:bg-indigo-100">
-                <i class="fa-solid fa-key"></i> Buka OpenAI API Keys <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
-              </a>
-              <p class="mt-2 text-slate-600">Setelah membuat key, salin <b>sekali</b> dan tempel di kolom di atas. Jangan kirim API Key ke orang lain atau menaruhnya di kode HTML.</p>
-            </div>
+              <div class="px-3 sm:px-8 py-4 border-t border-slate-200 bg-white">
+                <div class="max-w-4xl mx-auto">
+                  <div class="flex items-end gap-2 rounded-3xl border border-slate-300 bg-white shadow-sm p-2 focus-within:ring-2 focus-within:ring-indigo-200">
+                    <textarea id="ai-input" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiMessage()}" placeholder="Tanyakan sesuatu atau tulis perintah..." class="flex-1 resize-none text-sm px-3 py-2.5 outline-none bg-transparent max-h-32"></textarea>
+                    <button id="btn-voice-ai" onclick="toggleVoiceListening()" class="voice-control-btn w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center" title="Bicara"><i class="fa-solid fa-microphone"></i></button>
+                    <button onclick="generateAiImageFromInput()" class="w-10 h-10 rounded-full bg-fuchsia-600 text-white flex items-center justify-center" title="Buka ChatGPT untuk buat gambar"><i class="fa-solid fa-image"></i></button>
+                    <button onclick="sendAiMessage()" class="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center" title="Kirim"><i class="fa-solid fa-paper-plane"></i></button>
+                  </div>
+                  <p class="text-[9px] text-slate-400 text-center mt-2">Enter = kirim • Shift+Enter = baris baru • Buat gambar dibuka melalui ChatGPT</p>
+                </div>
+              </div>
+            </section>
+            <aside class="bg-slate-50 border-l border-slate-200 p-4 sm:p-5 space-y-4">
+              <div class="bg-white border border-slate-200 rounded-2xl p-4">
+                <div class="flex items-center justify-between"><b class="text-xs text-slate-800">Status AI</b><span id="ai-config-status" class="text-[10px] px-2 py-1 rounded-full bg-slate-100 text-slate-500">Memeriksa...</span></div>
+                <p class="text-[10px] text-slate-500 mt-2">API Key disimpan aman di Script Properties dan tidak ditampilkan kembali.</p>
+              </div>
+              <div class="bg-white border border-slate-200 rounded-2xl p-4">
+                <b class="text-xs text-slate-800">API Key OpenAI</b>
+                <div class="flex gap-2 mt-2"><input id="openai-api-key" type="password" placeholder="Tempel API Key baru" class="min-w-0 flex-1 text-[10px] px-3 py-2.5 rounded-xl border border-slate-300 outline-none"><button onclick="saveOpenAiKeyFromUI()" class="bg-slate-800 text-white px-3 rounded-xl text-[10px] font-bold">Simpan</button></div>
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="inline-flex mt-2 text-[10px] text-indigo-600 font-semibold hover:underline"><i class="fa-solid fa-key mr-1"></i> Kelola API Key</a>
+              </div>
+              <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 text-[10px] text-indigo-800">
+                <b><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Buat gambar</b>
+                <p class="mt-1 opacity-80">Tulis deskripsi gambar lalu tekan tombol gambar. Prompt akan disalin dan ChatGPT dibuka. Contoh: poster kebersihan sekolah untuk siswa kelas 5.</p>
+              </div>
+            </aside>
           </div>
-          <div id="ai-chat-box" class="bg-slate-900 text-slate-100 rounded-3xl p-4 h-96 overflow-y-auto space-y-3 text-xs custom-scrollbar">
-            <div class="bg-slate-800 p-3 rounded-2xl max-w-2xl border border-slate-700">🤖 <b>Halo-Halo:</b> Siap membantu. Contoh: “Halo-halo, buka master mapel” atau “input nilai absen 1 NIS 1 delapan puluh”.</div>
-          </div>
-          <div class="flex gap-2">
-            <input type="text" id="ai-input" onkeydown="if(event.key==='Enter') sendAiMessage()" placeholder="Ketik perintah atau pertanyaan..." class="flex-1 text-xs p-3 rounded-2xl border border-slate-300 outline-none">
-            <button id="btn-voice-ai" onclick="toggleVoiceListening()" class="voice-control-btn bg-emerald-600 text-white px-4 rounded-2xl font-bold text-xs" title="Aktifkan Asisten Suara"><i class="fa-solid fa-microphone"></i></button>
-            <button onclick="sendAiMessage()" class="bg-indigo-600 text-white px-5 rounded-2xl font-bold text-xs"><i class="fa-solid fa-paper-plane"></i></button>
-          </div>
-          <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-[11px] text-amber-800">
-            <b>Catatan keamanan:</b> AI tidak boleh menulis database secara langsung. Perintah perubahan nilai harus mendapat konfirmasi Anda terlebih dahulu.
-          </div>
-        </div>
-      `;
-      loadAiStatus();
+        </div>`;
+      const savedTheme = localStorage.getItem('edusmart_ai_theme') || 'slate';
+      const themeSelect = document.getElementById('ai-theme-select'); if (themeSelect) themeSelect.value = savedTheme;
+      applyAiTheme(savedTheme); loadAiStatus();
     }
 
-    async function saveOpenAiKeyFromUI() {
-      const input=document.getElementById('openai-api-key');
-      const apiKey=(input && input.value || '').trim();
-      if(!apiKey){showToast('API Key wajib diisi.','warning');return;}
-      const res=await apiCall('saveOpenAiApiKey',{}, {apiKey:apiKey, username: currentUser.Username, role: currentUser.Role, spreadsheetId: config.spreadsheetId});
-      if(res.success){input.value='';showToast(res.message,'success');loadAiStatus();}else showToast(res.message,'error');
-    }
-
-    async function loadAiStatus() {
-      const el = document.getElementById('ai-quota-badge');
-      if (!el) return;
-      const res = await apiCall('getOpenAiStatus', {}, { username: currentUser.Username, role: currentUser.Role, spreadsheetId: config.spreadsheetId });
-      if (res.success && res.data) el.textContent = `${res.data.used || 0}/${res.data.limit || 20} penggunaan hari ini`;
-      else el.textContent = 'AI belum dikonfigurasi';
-    }
-
-    function appendAiChat(who, text, mine) {
-      const box = document.getElementById('ai-chat-box');
-      if (!box) return;
-      const safe = escapeHtml(text).replace(/\n/g, '<br>');
-      box.innerHTML += `<div class="${mine ? 'bg-indigo-900/60 ml-auto border-indigo-700 text-right' : 'bg-slate-800 border-slate-700'} p-3 rounded-2xl max-w-2xl border">${mine ? '👨‍🏫' : '🤖'} <b>${who}:</b> ${safe}</div>`;
-      box.scrollTop = box.scrollHeight;
-    }
-
-    async function sendAiMessage(textOverride) {
-      if (!currentUser || String(currentUser.Role).toLowerCase() !== 'guru') return;
-      const input = document.getElementById('ai-input');
-      const userText = String(textOverride || (input && input.value) || '').trim();
-      if (!userText) return;
-      if (input) input.value = '';
-      appendAiChat('Anda', userText, true);
-      const res = await apiCall('haloHalo', {}, { username: currentUser.Username, role: currentUser.Role, text: userText });
-      if (!res.success) { appendAiChat('Halo-Halo', res.message || 'AI gagal memproses perintah.', false); speakText(res.message || 'AI gagal memproses perintah.'); return; }
-      handleHaloHaloResult(res.data || {});
-      loadAiStatus();
-    }
+    function setAiPrompt(text) { const input=document.getElementById('ai-input'); if(input){input.value=text; input.focus();} }
+    function newAiChat() { const box=document.getElementById('ai-chat-box'); if(!box) return; box.innerHTML='<div class="ai-welcome-card max-w-3xl mx-auto rounded-3xl p-5 border border-white/10 shadow-sm"><div class="text-2xl mb-2">🤖</div><div class="font-bold text-lg">Chat baru</div><p class="text-sm opacity-80 mt-1">Silakan mulai percakapan baru.</p></div>'; }
+    function applyAiTheme(theme) { theme=['slate','indigo','emerald','rose','amber','dark'].includes(theme)?theme:'slate'; const box=document.getElementById('ai-chat-box'); if(box) box.className='ai-chat-theme-'+theme+' min-h-[58vh] max-h-[68vh] overflow-y-auto px-4 sm:px-8 py-6 space-y-5 custom-scrollbar'; localStorage.setItem('edusmart_ai_theme',theme); }
+    async function saveOpenAiKeyFromUI() { const input=document.getElementById('openai-api-key'); const apiKey=String(input&&input.value||'').trim(); if(!apiKey){showToast('API Key wajib diisi.','warning');return;} const res=await apiCall('saveOpenAiApiKey',{}, {apiKey,username:currentUser.Username,role:currentUser.Role,spreadsheetId:config.spreadsheetId}); if(res.success){input.value='';showToast(res.message,'success');loadAiStatus();}else showToast(res.message,'error'); }
+    async function loadAiStatus() { const el=document.getElementById('ai-quota-badge'), statusEl=document.getElementById('ai-config-status'); if(!el)return; const res=await apiCall('getOpenAiStatus',{}, {username:currentUser.Username,role:currentUser.Role,spreadsheetId:config.spreadsheetId}); if(res.success&&res.data){el.textContent=`${res.data.used||0}/${res.data.limit||20} penggunaan hari ini`; if(statusEl){statusEl.textContent=res.data.configured?'✓ API Key tersimpan':'Belum dikonfigurasi'; statusEl.className='text-[10px] px-2 py-1 rounded-full '+(res.data.configured?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700');}}else{el.textContent='AI belum dikonfigurasi';if(statusEl)statusEl.textContent='Belum dikonfigurasi';} }
+    function appendAiChat(who,text,mine) { const box=document.getElementById('ai-chat-box'); if(!box)return; const safe=escapeHtml(text).replace(/\n/g,'<br>'); box.innerHTML+=`<div class="max-w-3xl mx-auto flex ${mine?'justify-end':'justify-start'}"><div class="${mine?'bg-indigo-600 text-white':'bg-white text-slate-800 border border-slate-200'} px-4 py-3 rounded-3xl shadow-sm text-sm leading-relaxed max-w-[85%]"><div class="text-[9px] opacity-70 mb-1">${mine?'Anda':'Halo-Halo'}</div>${safe}</div></div>`; box.scrollTop=box.scrollHeight; }
+    function appendAiImage(prompt,imageData) { const box=document.getElementById('ai-chat-box'); if(!box||!imageData)return; const src=String(imageData).startsWith('data:')?imageData:(String(imageData).startsWith('http')?imageData:'data:image/png;base64,'+imageData); const safePrompt=escapeHtml(prompt||'Gambar AI'); box.innerHTML+=`<div class="max-w-3xl mx-auto"><div class="bg-white border border-slate-200 rounded-3xl p-3 shadow-sm"><div class="text-[9px] text-slate-500 mb-2">Halo-Halo • Gambar AI</div><img src="${src}" alt="${safePrompt}" class="w-full rounded-2xl max-h-[520px] object-contain bg-slate-100"><div class="flex items-center justify-between gap-2 mt-3"><span class="text-[10px] text-slate-500 truncate">${safePrompt}</span><a href="${src}" download="halohalo-gambar.png" class="shrink-0 text-[10px] font-bold text-indigo-600 hover:underline"><i class="fa-solid fa-download mr-1"></i>Simpan gambar</a></div></div></div>`; box.scrollTop=box.scrollHeight; }
+    async function generateAiImageFromInput() { if(!currentUser||String(currentUser.Role).toLowerCase()!=='guru')return; const input=document.getElementById('ai-input'); const prompt=String(input&&input.value||'').trim(); if(!prompt){showToast('Tulis deskripsi gambar terlebih dahulu.','warning');return;} if(input)input.value=''; appendAiChat('Anda','Buat gambar: '+prompt,true); let copied=false; try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(prompt);copied=true;}}catch(e){} const w=window.open('https://chatgpt.com/','_blank','noopener,noreferrer'); const msg=copied ? 'Prompt gambar sudah disalin. ChatGPT dibuka di tab baru — tinggal tempel (Ctrl+V) lalu kirim.' : 'ChatGPT dibuka di tab baru. Salin prompt dari pesan di atas, lalu tempel di ChatGPT dan kirim.'; appendAiChat('Halo-Halo',msg,false); if(!w)showToast('Popup ChatGPT diblokir browser. Izinkan popup untuk situs ini.','warning'); }
+    async function sendAiMessage(textOverride) { if(!currentUser||String(currentUser.Role).toLowerCase()!=='guru')return; const input=document.getElementById('ai-input'); const userText=String(textOverride||(input&&input.value)||'').trim(); if(!userText)return; if(input)input.value=''; appendAiChat('Anda',userText,true); const res=await apiCall('haloHalo',{}, {username:currentUser.Username,role:currentUser.Role,text:userText}); if(!res.success){appendAiChat('Halo-Halo',res.message||'AI gagal memproses perintah.',false);speakText(res.message||'AI gagal memproses perintah.');return;} handleHaloHaloResult(res.data||{}); loadAiStatus(); }
 
     function handleHaloHaloResult(data) {
       const reply = data.reply || data.message || 'Perintah diproses.';
+      if (data.action === 'generate_image' && data.image) { appendAiImage(data.prompt || 'Gambar AI', data.image); return; }
       appendAiChat('Halo-Halo', reply, false);
       speakText(reply);
       if (data.action === 'open_view' && data.view) {
@@ -5092,15 +5390,120 @@ function clearAllData() {
       return String(value == null ? '' : value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
     }
 
-    function downloadExcelTemplate(type) {
+    async function openNilaiTemplateMapelModal() {
+      try {
+        // Sumber siswa = data siswa yang benar-benar sudah dimuat di aplikasi.
+        const studentsRes = await ensureStudentsCache(false);
+        const students = (studentsRes && studentsRes.success ? (studentsRes.data || []) : (window.cachedStudents || []))
+          .filter(s => String(s.Status || 'aktif').toLowerCase() !== 'nonaktif');
+        const subjectsRes = await apiCall('getSubjects');
+        const subjects = (subjectsRes && subjectsRes.success ? (subjectsRes.data || []) : [])
+          .filter(s => String(s.Status || 'aktif').toLowerCase() !== 'nonaktif');
+
+        if (!students.length) {
+          showToast('Data siswa belum termuat di aplikasi.', 'warning');
+          return;
+        }
+        if (!subjects.length) {
+          showToast('Belum ada mata pelajaran aktif di Master Mapel.', 'warning');
+          return;
+        }
+
+        const options = subjects.map(s => `<option value="${escapeHtml(s.Kode)}">${escapeHtml(s.NamaMapel)} (${escapeHtml(s.Kode)})</option>`).join('');
+        openModal(`
+          <div class="space-y-4">
+            <div>
+              <h3 class="text-lg font-bold text-slate-800">Download Template Nilai</h3>
+              <p class="text-xs text-slate-500 mt-1">Pilih satu mata pelajaran. Template hanya berisi siswa nyata dan komponen penilaian untuk mapel tersebut.</p>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Mata Pelajaran</label>
+              <select id="template-nilai-mapel" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm">${options}</select>
+            </div>
+            <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-700">
+              Contoh: pilih <b>Matematika</b> → template hanya untuk Matematika. Untuk IPA, Bahasa Indonesia, dan mapel lain, download template masing-masing secara terpisah.
+            </div>
+            <button onclick="downloadNilaiTemplateSelectedMapel()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl">
+              <i class="fa-solid fa-download"></i> Download Template Mapel Ini
+            </button>
+          </div>
+        `);
+      } catch (err) {
+        showToast('Gagal menyiapkan pilihan mata pelajaran: ' + (err.message || err), 'error');
+      }
+    }
+
+    async function downloadNilaiTemplateSelectedMapel() {
+      try {
+        const kodeMapel = String(document.getElementById('template-nilai-mapel')?.value || '').trim();
+        if (!kodeMapel) { showToast('Pilih mata pelajaran terlebih dahulu.', 'warning'); return; }
+
+        const [studentsRes, subjectsRes, configRes] = await Promise.all([
+          ensureStudentsCache(false),
+          apiCall('getSubjects'),
+          apiCall('getPenilaianConfig')
+        ]);
+        const students = (studentsRes && studentsRes.success ? (studentsRes.data || []) : (window.cachedStudents || []))
+          .filter(s => String(s.Status || 'aktif').toLowerCase() !== 'nonaktif');
+        const subjects = (subjectsRes && subjectsRes.success ? (subjectsRes.data || []) : [])
+          .filter(s => String(s.Status || 'aktif').toLowerCase() !== 'nonaktif');
+        const subject = subjects.find(s => String(s.Kode || '').trim() === kodeMapel);
+        const configs = (configRes && configRes.success ? (configRes.data || []) : [])
+          .filter(c => String(c.KodeMapel || '').trim() === kodeMapel && String(c.Status || 'aktif').toLowerCase() !== 'nonaktif')
+          .sort((a,b) => Number(a.Urutan || 0) - Number(b.Urutan || 0));
+        const components = [...new Set(configs.map(c => String(c.Komponen || '').trim()).filter(Boolean))];
+
+        if (!students.length) { showToast('Data siswa belum tersedia di aplikasi.', 'warning'); return; }
+        if (!subject) { showToast('Mata pelajaran tidak ditemukan.', 'error'); return; }
+        if (!components.length) {
+          showToast(`Belum ada komponen penilaian untuk ${subject.NamaMapel}. Tambahkan komponen terlebih dahulu.`, 'warning');
+          return;
+        }
+
+        // FORMAT TEMPLATE: satu mapel = satu file Excel, satu siswa = satu baris.
+        // Komponen penilaian mapel menjadi kolom tersendiri sesuai konfigurasi pengguna.
+        const headers = ['ID','Kelas','KodeMapel','NIS','NamaSiswa','Tanggal', ...components];
+        const rows = students.map(student => {
+          const row = {
+            ID: '',
+            Kelas: String(student.Kelas || ''),
+            KodeMapel: kodeMapel,
+            NIS: String(student.NIS || ''),
+            NamaSiswa: String(student.Nama || ''),
+            Tanggal: ''
+          };
+          components.forEach(component => row[component] = '');
+          return row;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(rows, {header: headers});
+        ws['!cols'] = headers.map(h => ({wch: Math.max(12, Math.min(30, String(h).length + 5))}));
+        const wb = XLSX.utils.book_new();
+        const safeName = String(subject.NamaMapel || kodeMapel).replace(/[\\/:*?"<>|]/g, '_').trim();
+        XLSX.utils.book_append_sheet(wb, ws, 'Nilai');
+        XLSX.writeFile(wb, `Template_Nilai_${safeName}.xlsx`);
+        closeModal();
+        showToast(`Template ${subject.NamaMapel} berhasil diunduh: ${students.length} siswa, ${components.length} komponen.`, 'success');
+      } catch (err) {
+        showToast('Gagal membuat template nilai: ' + (err.message || err), 'error');
+      }
+    }
+
+    async function downloadExcelTemplate(type) {
       const cfg = EXCEL_CONFIG[type];
       if (!cfg || typeof XLSX === 'undefined') { showToast('Library Excel belum siap.', 'error'); return; }
+
+      // Template Nilai sekarang dipisahkan per mata pelajaran.
+      if (type === 'nilai') {
+        await openNilaiTemplateMapelModal();
+        return;
+      }
+
       const example = {};
       cfg.headers.forEach(h => example[h] = '');
       if (type === 'siswa') Object.assign(example, {NIS:'1004',NISN:'0051234564',Nama:'Nama Siswa',JenisKelamin:'L',TempatLahir:'Malang',TanggalLahir:'2010-01-01',Alamat:'Alamat lengkap',Kelas:'VII-A',NamaOrangTua:'Nama Orang Tua',NoHP:'08123456789',Status:'aktif'});
       if (type === 'mapel') Object.assign(example, {Kode:'IPA-7',NamaMapel:'IPA Terpadu',Guru:'Nama Guru',Kelas:'VII-A',Status:'aktif'});
       if (type === 'absensi') Object.assign(example, {ID:'ABS-001',Tanggal:new Date().toISOString().slice(0,10),Kelas:'VII-A',KodeMapel:'MTK-7',NIS:'1001',NamaSiswa:'Ahmad Rizky',StatusHadir:'Hadir'});
-      if (type === 'nilai') Object.assign(example, {ID:'NIL-001',Kelas:'VII-A',KodeMapel:'MTK-7',NIS:'1001',NamaSiswa:'Ahmad Rizky',JenisPenilaian:'Tugas',Nilai:85,Tanggal:new Date().toISOString().slice(0,10)});
       if (type === 'jurnal') Object.assign(example, {ID:'JRN-001',Tanggal:new Date().toISOString().slice(0,10),Kelas:'VII-A',KodeMapel:'MTK-7',Materi:'Materi pembelajaran',Kegiatan:'Kegiatan pembelajaran',Catatan:'Catatan tambahan'});
       if (type === 'pengumuman') Object.assign(example, {ID:'PG-001',Tanggal:new Date().toISOString().slice(0,10),Judul:'Pengumuman Sekolah',Isi:'Isi pengumuman',TargetRole:'Semua',TargetKelas:'Semua',Pembuat:currentUser ? currentUser.Nama : 'Guru'});
       const ws = XLSX.utils.json_to_sheet([example], {header: cfg.headers});
@@ -5142,9 +5545,65 @@ function clearAllData() {
         const wb = XLSX.read(buffer, {type:'array', cellDates:true});
         const firstSheet = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(firstSheet, {defval:'', raw:false});
-        const normalized = rows.map(row => {
-          const obj = {}; cfg.headers.forEach(h => obj[h] = row[h] == null ? '' : String(row[h]).trim()); return obj;
-        });
+        let normalized;
+        if (type === 'nilai') {
+          // Mendukung template nilai per-mapel: satu siswa satu baris,
+          // setiap komponen penilaian menjadi kolom tersendiri.
+          const headerMatrix = XLSX.utils.sheet_to_json(firstSheet, {header:1, defval:'', raw:false});
+          const rawHeaders = (headerMatrix[0] || []).map(h => String(h || '').trim()).filter(Boolean);
+          const baseHeaders = ['ID','Kelas','KodeMapel','NIS','NamaSiswa','Tanggal'];
+          const kodeMapel = String((rows[0] && rows[0].KodeMapel) || '').trim();
+          const configRes = await apiCall('getPenilaianConfig');
+          const configs = (configRes && configRes.success ? (configRes.data || []) : [])
+            .filter(c => String(c.KodeMapel || '').trim() === kodeMapel && String(c.Status || 'aktif').toLowerCase() !== 'nonaktif')
+            .sort((a,b) => Number(a.Urutan || 0) - Number(b.Urutan || 0));
+          const configuredComponents = [...new Set(configs.map(c => String(c.Komponen || '').trim()).filter(Boolean))];
+          const detectedComponents = rawHeaders.filter(h => !baseHeaders.includes(h));
+          const components = configuredComponents.length
+            ? detectedComponents.filter(h => configuredComponents.includes(h))
+            : detectedComponents;
+          normalized = [];
+          rows.forEach((row, ri) => {
+            const baseId = String(row.ID || '').trim();
+            const base = {
+              Kelas: String(row.Kelas || '').trim(),
+              KodeMapel: kodeMapel,
+              NIS: String(row.NIS || '').trim(),
+              NamaSiswa: String(row.NamaSiswa || '').trim(),
+              Tanggal: String(row.Tanggal || '').trim()
+            };
+            components.forEach(component => {
+              const value = String(row[component] == null ? '' : row[component]).trim();
+              if (value === '') return;
+              normalized.push({
+                ID: baseId ? `${baseId}-${component}`.replace(/[^a-zA-Z0-9_-]/g,'_') : `NIL-${Date.now()}-${ri}-${Math.random().toString(36).slice(2,8)}`,
+                Kelas: base.Kelas,
+                KodeMapel: base.KodeMapel,
+                NIS: base.NIS,
+                NamaSiswa: base.NamaSiswa,
+                JenisPenilaian: component,
+                Nilai: value,
+                Tanggal: base.Tanggal
+              });
+            });
+          });
+          if (!normalized.length) {
+            normalized = rows.map((row, ri) => ({
+              ID: String(row.ID || `NIL-${Date.now()}-${ri}-${Math.random().toString(36).slice(2,8)}`),
+              Kelas: String(row.Kelas || '').trim(),
+              KodeMapel: kodeMapel,
+              NIS: String(row.NIS || '').trim(),
+              NamaSiswa: String(row.NamaSiswa || '').trim(),
+              JenisPenilaian: '',
+              Nilai: '',
+              Tanggal: String(row.Tanggal || '').trim()
+            }));
+          }
+        } else {
+          normalized = rows.map(row => {
+            const obj = {}; cfg.headers.forEach(h => obj[h] = row[h] == null ? '' : String(row[h]).trim()); return obj;
+          });
+        }
         const validation = validateExcelRows(cfg, normalized);
         const area = document.getElementById('excel-preview-area');
         area.classList.remove('hidden');
@@ -5165,7 +5624,11 @@ function clearAllData() {
       const errors = [];
       if (!rows.length) return {valid:false, errors:['File Excel tidak memiliki data.']};
       rows.forEach((r,i) => {
-        cfg.required.forEach(h => { if (!String(r[h] || '').trim()) errors.push(`Baris ${i+2}: kolom ${h} wajib diisi.`); });
+        if (cfg.sheet === 'Nilai') {
+          ['Kelas','KodeMapel','NIS','NamaSiswa','JenisPenilaian','Nilai','Tanggal'].forEach(h => { if (!String(r[h] || '').trim()) errors.push(`Baris ${i+2}: kolom ${h} wajib diisi.`); });
+        } else {
+          cfg.required.forEach(h => { if (!String(r[h] || '').trim()) errors.push(`Baris ${i+2}: kolom ${h} wajib diisi.`); });
+        }
         if (cfg.sheet === 'Siswa' && r.JenisKelamin && !['L','P','Laki-laki','Perempuan'].includes(r.JenisKelamin)) errors.push(`Baris ${i+2}: JenisKelamin harus L/P.`);
         if (cfg.sheet === 'Absensi' && r.StatusHadir && !['Hadir','Izin','Sakit','Alpa'].includes(r.StatusHadir)) errors.push(`Baris ${i+2}: StatusHadir tidak valid.`);
         if (cfg.sheet === 'Nilai' && (Number(r.Nilai) < 0 || Number(r.Nilai) > 100 || isNaN(Number(r.Nilai)))) errors.push(`Baris ${i+2}: Nilai harus angka 0-100.`);

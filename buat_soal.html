@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pembuat Soal Kuis - SDN 3 Ngantru</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+        * {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .touch-target {
+            min-height: 48px;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0f766e;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .toast {
+            animation: slideUp 0.3s ease-in-out;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .btn-loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .reset-btn {
+            transition: all 0.3s ease;
+        }
+        .reset-btn:hover {
+            transform: scale(1.05);
+        }
+        .reset-btn:active {
+            transform: scale(0.95);
+        }
+        .spreadsheet-id-display {
+            font-size: 10px;
+            background: #f1f5f9;
+            padding: 4px 10px;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.connected {
+            background: #10b981;
+            animation: pulse 1.5s infinite;
+        }
+        .status-dot.disconnected {
+            background: #ef4444;
+        }
+        .status-dot.unknown {
+            background: #94a3b8;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col max-w-[480px] mx-auto shadow-2xl">
+
+    <div id="appContainer" class="flex flex-col min-h-screen">
+        
+        <!-- ============================================================ -->
+        <!-- HEADER -->
+        <!-- ============================================================ -->
+        <header class="bg-teal-700 text-white px-4 py-3.5 sticky top-0 z-50 shadow-md">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="bg-white/10 p-2 rounded-xl">
+                        <i class="bi bi-robot text-xl text-orange-500"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-extrabold text-base tracking-tight leading-tight">Pembuat Soal Kuis</h1>
+                        <p class="text-[10px] text-teal-100 font-medium">SDN 3 Ngantru</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="importExcelInput" class="bg-teal-800 hover:bg-teal-900 text-white rounded-xl px-2.5 py-1.5 text-xs font-bold cursor-pointer flex items-center gap-1.5 border border-white/10 active:scale-95 transition-all">
+                        <i class="bi bi-file-earmark-arrow-up text-sm text-teal-300"></i> Impor
+                    </label>
+                    <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden" onchange="importExistingExcel(event)">
+                    <button onclick="clearAllQuestions()" class="bg-rose-600 hover:bg-rose-700 text-white rounded-xl px-2.5 py-1.5 text-xs font-bold border border-white/10 active:scale-95 transition-all">
+                        <i class="bi bi-trash3 text-sm"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- Spreadsheet ID Status -->
+            <div id="spreadsheetStatus" class="hidden mt-2 px-2 py-1.5 bg-teal-800/50 rounded-xl">
+                <div class="flex items-center justify-between text-[10px]">
+                    <span class="text-teal-200 flex items-center gap-1">
+                        <i class="bi bi-table"></i> Sheet ID:
+                    </span>
+                    <span id="spreadsheetIdDisplay" class="font-mono text-teal-100 font-bold truncate max-w-[200px]"></span>
+                    <button onclick="copySpreadsheetId()" class="text-teal-300 hover:text-white transition-colors" title="Salin ID">
+                        <i class="bi bi-copy"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- ============================================================ -->
+        <!-- MAIN CONTENT -->
+        <!-- ============================================================ -->
+        <main class="flex-1 p-4 space-y-4 pb-32 overflow-y-auto">
+            
+            <!-- ========================================================== -->
+            <!-- PANEL AI GENERATOR -->
+            <!-- ========================================================== -->
+            <section class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3.5 fade-in">
+                <div class="flex items-center gap-2 border-b border-slate-100 pb-2.5">
+                    <i class="bi bi-magic text-orange-500 text-lg"></i>
+                    <h2 class="font-bold text-slate-900 text-sm">Generator Soal AI</h2>
+                    <span class="ml-auto text-[8px] bg-slate-100 px-2 py-0.5 rounded-full text-slate-400">Gemini 3 Flash</span>
+                </div>
+
+                <div class="space-y-3">
+                    <!-- API KEY -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1 flex items-center justify-between">
+                            <span>API Key Gemini</span>
+                            <a href="https://aistudio.google.com/" target="_blank" class="text-[10px] text-indigo-600 hover:underline flex items-center gap-0.5">
+                                Dapatkan Key <i class="bi bi-box-arrow-up-right text-[8px]"></i>
+                            </a>
+                        </label>
+                        <input type="password" id="api_key_input" placeholder="Masukkan AIzaSy... atau AQ.Ab..." 
+                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target font-mono">
+                        <p class="text-[9px] text-slate-400 mt-1">🔒 API Key tersimpan di browser</p>
+                    </div>
+
+                    <!-- TOPIK -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Topik / Materi <span class="text-red-500">*</span></label>
+                        <input type="text" id="ai_topic_input" placeholder="Contoh: Operasi Hitung Pecahan, Sistem Pencernaan Manusia" 
+                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all font-semibold touch-target">
+                    </div>
+
+                    <!-- MAPEL & KELAS -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran</label>
+                            <select id="ai_subject_input" class="w-full px-2 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
+                                <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                                <option value="Matematika" selected>Matematika</option>
+                                <option value="IPA">IPA</option>
+                                <option value="IPS">IPS</option>
+                                <option value="Bahasa Inggris">Bahasa Inggris</option>
+                                <option value="PPKn">PPKn</option>
+                                <option value="PJOK">PJOK</option>
+                                <option value="Seni Budaya">Seni Budaya</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Kelas</label>
+                            <select id="ai_class_input" class="w-full px-2 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
+                                <option value="Kelas 1 SD">Kelas 1 SD</option>
+                                <option value="Kelas 2 SD">Kelas 2 SD</option>
+                                <option value="Kelas 3 SD">Kelas 3 SD</option>
+                                <option value="Kelas 4 SD">Kelas 4 SD</option>
+                                <option value="Kelas 5 SD" selected>Kelas 5 SD</option>
+                                <option value="Kelas 6 SD">Kelas 6 SD</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- TIPE SOAL -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Target Tipe Soal</label>
+                        <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="font-medium text-slate-600">P. Ganda</span>
+                                <input type="number" id="num_pg" value="2" min="0" max="10" class="w-12 text-center py-1 border rounded-lg font-bold">
+                            </div>
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="font-medium text-slate-600">PG Kompleks</span>
+                                <input type="number" id="num_pgk" value="1" min="0" max="10" class="w-12 text-center py-1 border rounded-lg font-bold">
+                            </div>
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="font-medium text-slate-600">Menjodohkan</span>
+                                <input type="number" id="num_matching" value="1" min="0" max="10" class="w-12 text-center py-1 border rounded-lg font-bold">
+                            </div>
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="font-medium text-slate-600">Isian</span>
+                                <input type="number" id="num_isian" value="1" min="0" max="10" class="w-12 text-center py-1 border rounded-lg font-bold">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="btn_generate_ai" onclick="generateQuestionsWithGemini()" 
+                        class="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:scale-95 transition-all text-white font-extrabold text-xs py-3 rounded-2xl shadow-md shadow-orange-200 flex items-center justify-center gap-2 touch-target">
+                        <i class="bi bi-cpu"></i> Generate Soal dengan AI
+                    </button>
+                </div>
+            </section>
+
+            <!-- ========================================================== -->
+            <!-- PANEL METADATA KUIS -->
+            <!-- ========================================================== -->
+            <section class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3.5 fade-in">
+                <div class="flex items-center gap-2 border-b border-slate-100 pb-2.5">
+                    <i class="bi bi-calendar-event text-teal-700 text-lg"></i>
+                    <h2 class="font-bold text-slate-900 text-sm">Pengaturan Kuis</h2>
+                </div>
+                
+                <div class="grid grid-cols-1 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Waktu Mulai</label>
+                        <input type="datetime-local" id="quiz_start_date" 
+                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Waktu Selesai</label>
+                        <input type="datetime-local" id="quiz_end_date" 
+                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">Durasi (Menit)</label>
+                        <input type="number" id="quiz_duration" value="30" min="1" max="180"
+                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================== -->
+            <!-- PANEL APPS SCRIPT -->
+            <!-- ========================================================== -->
+            <section class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3 fade-in">
+                <div class="flex items-center gap-2 border-b border-slate-100 pb-2.5">
+                    <i class="bi bi-cloud-upload text-teal-700 text-lg"></i>
+                    <h2 class="font-bold text-slate-900 text-sm">Kirim ke Google Sheets</h2>
+                    <span id="connection_status" class="ml-auto text-[8px] flex items-center gap-1">
+                        <span class="status-dot unknown" id="statusDot"></span>
+                        <span class="text-slate-400" id="statusText">Belum terhubung</span>
+                    </span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">URL Apps Script</label>
+                    <div class="flex gap-2">
+                        <input type="url" id="script_url" placeholder="https://script.google.com/macros/s/.../exec" 
+                            class="flex-1 px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all font-mono touch-target">
+                        <button onclick="saveScriptUrl()" class="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all active:scale-95 whitespace-nowrap">
+                            <i class="bi bi-save"></i> Simpan
+                        </button>
+                        <button onclick="testConnection()" class="px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95">
+                            <i class="bi bi-wifi"></i>
+                        </button>
+                    </div>
+                    <div id="script_status" class="mt-1.5 text-[10px] text-slate-400 flex items-center gap-1.5">
+                        <i class="bi bi-info-circle"></i>
+                        <span id="script_status_text">Belum ada URL tersimpan</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="sendToAppsScript()" id="btn_send" class="w-full bg-teal-700 hover:bg-teal-800 active:scale-95 transition-all text-white font-extrabold text-xs py-3 rounded-2xl shadow-lg shadow-teal-200 flex items-center justify-center gap-2 touch-target">
+                        <i class="bi bi-cloud-upload-fill text-sm"></i> Kirim
+                    </button>
+                    <button onclick="loadFromAppsScript()" id="btn_load" class="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all text-white font-extrabold text-xs py-3 rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 touch-target">
+                        <i class="bi bi-cloud-download-fill text-sm"></i> Muat
+                    </button>
+                    <button onclick="resetSpreadsheetDirect()" id="btn_reset" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all text-white font-extrabold text-xs py-3 rounded-2xl shadow-lg shadow-rose-200 flex items-center justify-center gap-2 touch-target reset-btn">
+                        <i class="bi bi-arrow-counterclockwise text-sm"></i> Reset
+                    </button>
+                </div>
+                <div class="text-[9px] text-slate-400 text-center mt-1">
+                    <i class="bi bi-info-circle me-1"></i>Reset akan menghapus semua data di sheet "Buat_Kuis"
+                </div>
+            </section>
+
+            <!-- ========================================================== -->
+            <!-- PANEL SPREADSHEET ID MANUAL -->
+            <!-- ========================================================== -->
+            <section class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3 fade-in">
+                <div class="flex items-center gap-2 border-b border-slate-100 pb-2.5">
+                    <i class="bi bi-database text-teal-700 text-lg"></i>
+                    <h2 class="font-bold text-slate-900 text-sm">Spreadsheet ID</h2>
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">Masukkan Spreadsheet ID Manual</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="manual_spreadsheet_id" 
+                            placeholder="Contoh: 1ABC123DEF456..." 
+                            class="flex-1 px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all font-mono touch-target">
+                        <button onclick="saveManualSpreadsheetId()" 
+                            class="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all active:scale-95 whitespace-nowrap">
+                            <i class="bi bi-save"></i> Simpan
+                        </button>
+                    </div>
+                    <p class="text-[9px] text-slate-400 mt-1.5">
+                        <i class="bi bi-info-circle me-1"></i>
+                        ID bisa didapat dari URL: <span class="font-mono text-slate-600">docs.google.com/spreadsheets/d/<b>[ID_ANDI]</b>/edit</span>
+                    </p>
+                </div>
+            </section>
+
+            <!-- ========================================================== -->
+            <!-- LOADING OVERLAY -->
+            <!-- ========================================================== -->
+            <div id="ai_loader_overlay" class="hidden bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center space-y-3">
+                <div class="spinner"></div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-800">Menghubungi AI Gemini...</h4>
+                    <p class="text-[10px] text-slate-400 mt-1 max-w-xs mx-auto">Sedang merancang soal-soal berkualitas untuk siswa Anda.</p>
+                </div>
+            </div>
+
+            <!-- ========================================================== -->
+            <!-- DAFTAR SOAL -->
+            <!-- ========================================================== -->
+            <div class="flex items-center justify-between">
+                <h3 class="font-bold text-slate-700 text-sm">Daftar Soal</h3>
+                <span id="question_counter_text" class="text-xs bg-slate-100 px-3 py-1 rounded-full text-slate-600 font-semibold">Total: 0 Soal</span>
+            </div>
+
+            <section id="questionsList" class="space-y-4">
+                <!-- Soal akan dirender di sini -->
+            </section>
+
+            <!-- ========================================================== -->
+            <!-- TAMBAH SOAL MANUAL -->
+            <!-- ========================================================== -->
+            <div class="pt-2 text-center">
+                <button onclick="addNewQuestion()" class="w-full bg-teal-50 hover:bg-teal-100 text-teal-700 border-2 border-dashed border-teal-200 rounded-2xl py-3.5 text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 touch-target">
+                    <i class="bi bi-plus-circle-fill text-sm"></i> Tambah Soal Manual
+                </button>
+            </div>
+
+        </main>
+
+        <!-- ============================================================ -->
+        <!-- FOOTER / BOTTOM BAR -->
+        <!-- ============================================================ -->
+        <footer class="bg-white border-t border-slate-100 p-4 fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto z-40 rounded-t-3xl shadow-2xl">
+            <div class="flex items-center gap-3">
+                <button onclick="downloadExcelQuiz()" class="flex-1 bg-orange-500 hover:bg-orange-600 active:scale-95 transition-all text-white py-3 px-4 rounded-2xl font-extrabold text-xs shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 touch-target">
+                    <i class="bi bi-file-excel text-sm"></i> Download Excel
+                </button>
+                <button onclick="window.location.reload()" class="px-4 py-3 bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all rounded-2xl text-slate-600">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- TOAST NOTIFICATION -->
+    <!-- ============================================================ -->
+    <div id="customToast" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs px-4 py-3 rounded-2xl shadow-lg flex items-center gap-2 opacity-0 pointer-events-none transition-all duration-300 max-w-[90%]">
+        <i id="toast_icon" class="bi bi-info-circle-fill text-teal-400"></i>
+        <span id="toast_text" class="flex-1">Pesan...</span>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL CONFIRMATION -->
+    <!-- ============================================================ -->
+    <div id="customConfirmModal" class="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-5 w-full max-w-[360px] space-y-4 shadow-2xl max-h-[80vh] overflow-y-auto">
+            <h4 class="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+                <i class="bi bi-exclamation-triangle text-orange-500"></i> Konfirmasi
+            </h4>
+            <p id="confirm_modal_message" class="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">Apakah Anda yakin?</p>
+            <div class="flex gap-2 justify-end">
+                <button id="btn_confirm_cancel" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">Batal</button>
+                <button id="btn_confirm_ok" class="px-4 py-2 bg-orange-500 text-white text-xs font-bold rounded-xl">Ya, Lanjutkan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- JAVASCRIPT -->
+    <!-- ============================================================ -->
+    <script>
+        // ============================================================
+        // STATE
+        // ============================================================
+        let questions = [];
+        let SCRIPT_URL = localStorage.getItem('script_url') || '';
+        let isSending = false;
+        let isResetting = false;
+
+        // ============================================================
+        // FUNGSI UNTUK MEMBACA DARI DASHBOARD (kompatibel dengan dashboard_demo.html)
+        // ============================================================
+        function getValueFromDashboard(key) {
+            try {
+                const localValue = localStorage.getItem(key);
+                if (localValue) return localValue;
+
+                const sessionValue = sessionStorage.getItem(key);
+                if (sessionValue) return sessionValue;
+
+                if (window.sharedData && window.sharedData[key]) {
+                    return window.sharedData[key];
+                }
+
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === key) {
+                        return decodeURIComponent(value);
+                    }
+                }
+
+                return null;
+            } catch (e) {
+                console.warn('Gagal membaca data dari dashboard:', e);
+                return null;
+            }
+        }
+
+        function saveValueToDashboard(key, value) {
+            try {
+                localStorage.setItem(key, value);
+                sessionStorage.setItem(key, value);
+                if (!window.sharedData) window.sharedData = {};
+                window.sharedData[key] = value;
+                document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=31536000`;
+            } catch (e) {
+                console.warn('Gagal menyimpan data:', e);
+            }
+        }
+
+        // ============================================================
+        // FUNGSI SPREADSHEET ID (otomatis dari localStorage)
+        // ============================================================
+        function getSpreadsheetIdFromDashboard() {
+            const sources = [
+                () => localStorage.getItem('spreadsheet_id'),
+                () => sessionStorage.getItem('spreadsheet_id'),
+                () => getValueFromDashboard('spreadsheet_id'),
+                () => {
+                    const params = new URLSearchParams(window.location.search);
+                    return params.get('spreadsheet_id');
+                },
+                () => {
+                    const cookies = document.cookie.split(';');
+                    for (let cookie of cookies) {
+                        const [name, value] = cookie.trim().split('=');
+                        if (name === 'spreadsheet_id') {
+                            return decodeURIComponent(value);
+                        }
+                    }
+                    return null;
+                }
+            ];
+
+            for (let source of sources) {
+                try {
+                    const value = source();
+                    if (value && value.length > 10) {
+                        console.log(`✅ Spreadsheet ID ditemukan: ${value.substring(0, 15)}...`);
+                        return value;
+                    }
+                } catch (e) {
+                    // Lanjut ke sumber berikutnya
+                }
+            }
+
+            console.warn('⚠️ Spreadsheet ID tidak ditemukan di manapun');
+            return null;
+        }
+
+        function saveSpreadsheetId(spreadsheetId) {
+            if (!spreadsheetId || spreadsheetId.length < 10) return;
+            try {
+                localStorage.setItem('spreadsheet_id', spreadsheetId);
+                sessionStorage.setItem('spreadsheet_id', spreadsheetId);
+                saveValueToDashboard('spreadsheet_id', spreadsheetId);
+                document.cookie = `spreadsheet_id=${encodeURIComponent(spreadsheetId)}; path=/; max-age=31536000`;
+                console.log('✅ Spreadsheet ID tersimpan di localStorage');
+            } catch (e) {
+                console.warn('Gagal menyimpan spreadsheet ID:', e);
+            }
+        }
+
+        function copySpreadsheetId() {
+            const id = getSpreadsheetIdFromDashboard();
+            if (id) {
+                navigator.clipboard.writeText(id).then(() => {
+                    showToast('✅ Spreadsheet ID disalin!', true);
+                }).catch(() => {
+                    const input = document.createElement('input');
+                    input.value = id;
+                    document.body.appendChild(input);
+                    input.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(input);
+                    showToast('✅ Spreadsheet ID disalin!', true);
+                });
+            }
+        }
+
+        function saveManualSpreadsheetId() {
+            const id = document.getElementById('manual_spreadsheet_id').value.trim();
+            if (id && id.length > 10) {
+                saveSpreadsheetId(id);
+                const statusEl = document.getElementById('spreadsheetStatus');
+                const displayEl = document.getElementById('spreadsheetIdDisplay');
+                if (statusEl && displayEl) {
+                    statusEl.classList.remove('hidden');
+                    displayEl.textContent = id.substring(0, 20) + '...';
+                }
+                showToast('✅ Spreadsheet ID berhasil disimpan!', true);
+                document.getElementById('manual_spreadsheet_id').value = '';
+            } else {
+                showToast('⚠️ Masukkan ID yang valid (minimal 10 karakter)', false);
+            }
+        }
+
+        // ============================================================
+        // INISIALISASI
+        // ============================================================
+        window.onload = function() {
+            addNewQuestion();
+            
+            const now = new Date();
+            const startDate = new Date(now.getTime() + 30 * 60000);
+            document.getElementById('quiz_start_date').value = startDate.toISOString().slice(0, 16);
+            const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60000);
+            document.getElementById('quiz_end_date').value = endDate.toISOString().slice(0, 16);
+            document.getElementById('quiz_duration').value = 30;
+
+            // ========== AMBIL API KEY DARI LOCALSTORAGE ==========
+            const apiKeyFromDashboard = getValueFromDashboard('gemini_api_key');
+            const apiKeyFromLocal = localStorage.getItem('gemini_api_key');
+            const finalApiKey = apiKeyFromDashboard || apiKeyFromLocal || '';
+            if (finalApiKey) {
+                document.getElementById('api_key_input').value = finalApiKey;
+                localStorage.setItem('gemini_api_key', finalApiKey);
+                saveValueToDashboard('gemini_api_key', finalApiKey);
+            }
+
+            // ========== AMBIL SCRIPT URL DARI LOCALSTORAGE ==========
+            const scriptUrlFromDashboard = getValueFromDashboard('script_url');
+            const scriptUrlFromLocal = localStorage.getItem('script_url');
+            const finalScriptUrl = scriptUrlFromDashboard || scriptUrlFromLocal || '';
+            if (finalScriptUrl) {
+                SCRIPT_URL = finalScriptUrl;
+                document.getElementById('script_url').value = finalScriptUrl;
+                localStorage.setItem('script_url', finalScriptUrl);
+                saveValueToDashboard('script_url', finalScriptUrl);
+                document.getElementById('script_status_text').textContent = '✅ URL tersimpan: ' + finalScriptUrl.substring(0, 35) + '...';
+                document.getElementById('script_status_text').className = 'text-emerald-600';
+                testConnection();
+            }
+
+            // ========== AMBIL SPREADSHEET ID DARI LOCALSTORAGE ==========
+            const spreadsheetId = getSpreadsheetIdFromDashboard();
+            if (spreadsheetId) {
+                saveSpreadsheetId(spreadsheetId);
+                const statusEl = document.getElementById('spreadsheetStatus');
+                const displayEl = document.getElementById('spreadsheetIdDisplay');
+                if (statusEl && displayEl) {
+                    statusEl.classList.remove('hidden');
+                    displayEl.textContent = spreadsheetId.substring(0, 20) + '...';
+                }
+            }
+
+            // ========== EVENT AUTO-SAVE API KEY ==========
+            document.getElementById('api_key_input').addEventListener('change', function() {
+                const value = this.value.trim();
+                if (value && value.length > 5) {
+                    localStorage.setItem('gemini_api_key', value);
+                    saveValueToDashboard('gemini_api_key', value);
+                }
+            });
+
+            document.getElementById('api_key_input').addEventListener('input', function() {
+                const value = this.value.trim();
+                if (value && value.length > 5) {
+                    localStorage.setItem('gemini_api_key', value);
+                    saveValueToDashboard('gemini_api_key', value);
+                }
+            });
+        };
+
+        // ============================================================
+        // TOAST & CONFIRM
+        // ============================================================
+        function showToast(message, isSuccess = true) {
+            const toast = document.getElementById("customToast");
+            const toastText = document.getElementById("toast_text");
+            const toastIcon = document.getElementById("toast_icon");
+
+            toastText.innerText = message;
+            toastIcon.className = isSuccess ? "bi bi-check-circle-fill text-emerald-400" : "bi bi-exclamation-circle-fill text-orange-500";
+
+            toast.classList.remove("opacity-0", "pointer-events-none");
+            toast.classList.add("opacity-100");
+
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.add("opacity-0", "pointer-events-none");
+                toast.classList.remove("opacity-100");
+            }, 5000);
+        }
+
+        function showConfirm(message, callback) {
+            const modal = document.getElementById("customConfirmModal");
+            const msgText = document.getElementById("confirm_modal_message");
+            const btnCancel = document.getElementById("btn_confirm_cancel");
+            const btnOk = document.getElementById("btn_confirm_ok");
+
+            msgText.innerText = message;
+            modal.classList.remove("hidden");
+
+            btnCancel.onclick = function() { modal.classList.add("hidden"); };
+            btnOk.onclick = function() { modal.classList.add("hidden"); callback(); };
+        }
+
+        // ============================================================
+        // APPS SCRIPT CONNECTION
+        // ============================================================
+        function saveScriptUrl() {
+            const url = document.getElementById('script_url').value.trim();
+            if (url) {
+                SCRIPT_URL = url;
+                localStorage.setItem('script_url', url);
+                saveValueToDashboard('script_url', url);
+                document.getElementById('script_status_text').textContent = '✅ URL tersimpan: ' + url.substring(0, 35) + '...';
+                document.getElementById('script_status_text').className = 'text-emerald-600';
+                showToast('URL berhasil disimpan!', true);
+                testConnection();
+            } else {
+                showToast('Masukkan URL terlebih dahulu!', false);
+            }
+        }
+
+        function updateConnectionStatus(status, message) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            dot.className = 'status-dot';
+            if (status === 'connected') {
+                dot.classList.add('connected');
+                text.className = 'text-emerald-600';
+                text.textContent = message || 'Terhubung';
+            } else if (status === 'disconnected') {
+                dot.classList.add('disconnected');
+                text.className = 'text-rose-600';
+                text.textContent = message || 'Gagal';
+            } else {
+                dot.classList.add('unknown');
+                text.className = 'text-slate-400';
+                text.textContent = message || 'Belum terhubung';
+            }
+        }
+
+        async function testConnection() {
+            let url = document.getElementById('script_url').value.trim() || localStorage.getItem('script_url') || '';
+            if (!url) {
+                updateConnectionStatus('unknown', 'Belum ada URL');
+                return;
+            }
+
+            try {
+                const response = await fetch(url + '?action=ping');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    updateConnectionStatus('connected', 'Terhubung');
+                    showToast('✅ Koneksi ke server berhasil!', true);
+                } else {
+                    updateConnectionStatus('disconnected', 'Gagal');
+                    showToast('⚠️ Gagal terhubung ke server', false);
+                }
+            } catch (error) {
+                updateConnectionStatus('unknown', 'CORS Mode');
+                console.log('Ping gagal karena CORS, tapi data tetap bisa dikirim dengan mode no-cors');
+            }
+        }
+
+        // ============================================================
+        // CRUD SOAL
+        // ============================================================
+        function updateCounter() {
+            document.getElementById('question_counter_text').innerText = `Total: ${questions.length} Soal`;
+        }
+
+        function addNewQuestion() {
+            const nextId = questions.length > 0 ? Math.max(...questions.map(q => q.id)) + 1 : 1;
+            questions.push({
+                id: nextId,
+                tipe: 'PG',
+                pertanyaan: '',
+                pilihanA: '',
+                pilihanB: '',
+                pilihanC: '',
+                pilihanD: '',
+                jawaban: '',
+                kiri: ['', '', ''],
+                jodohIndex: ['A', 'B', 'C']
+            });
+            renderQuestions();
+            updateCounter();
+        }
+
+        function removeQuestion(id) {
+            if (questions.length <= 1) {
+                showToast("Minimal harus ada 1 soal!", false);
+                return;
+            }
+            showConfirm("Hapus soal ini?", () => {
+                questions = questions.filter(q => q.id !== id);
+                renderQuestions();
+                updateCounter();
+                showToast("Soal berhasil dihapus!");
+            });
+        }
+
+        function clearAllQuestions() {
+            if (questions.length === 0) {
+                showToast("Tidak ada soal untuk dihapus", false);
+                return;
+            }
+            showConfirm("Hapus SEMUA soal?", () => {
+                questions = [];
+                addNewQuestion();
+                renderQuestions();
+                updateCounter();
+                showToast("Semua soal telah dihapus!");
+            });
+        }
+
+        function changeQuestionType(id, newType) {
+            const q = questions.find(q => q.id === id);
+            if (q) {
+                q.tipe = newType;
+                q.jawaban = '';
+                renderQuestions();
+            }
+        }
+
+        function updateField(id, fieldName, value) {
+            const q = questions.find(q => q.id === id);
+            if (q) q[fieldName] = value;
+        }
+
+        function updateMatchingArray(id, arrayName, index, value) {
+            const q = questions.find(q => q.id === id);
+            if (q && q[arrayName]) q[arrayName][index] = value;
+        }
+
+        function togglePgkAnswer(qId, val) {
+            const q = questions.find(q => q.id === qId);
+            if (!q) return;
+            let answers = q.jawaban ? q.jawaban.split(';').map(j => j.trim()) : [];
+            answers = answers.includes(val) ? answers.filter(a => a !== val) : [...answers, val];
+            q.jawaban = answers.sort().join(';');
+            renderQuestions();
+        }
+
+        function updateJodohIndex(qId, rowIndex, selectedOpt) {
+            const q = questions.find(q => q.id === qId);
+            if (q) q.jodohIndex[rowIndex] = selectedOpt;
+        }
+
+        // ============================================================
+        // RENDER SOAL
+        // ============================================================
+        function renderQuestions() {
+            const container = document.getElementById('questionsList');
+            container.innerHTML = '';
+
+            questions.forEach((q, index) => {
+                let optionsHtml = '';
+
+                if (q.tipe === 'PG') {
+                    optionsHtml = `
+                        <div class="space-y-2 mt-3 pt-2.5 border-t border-slate-100">
+                            <span class="block text-xs font-bold text-slate-500 mb-1">Pilihan Jawaban:</span>
+                            <div class="grid grid-cols-1 gap-2">
+                                ${['A','B','C','D'].map(letter => `
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-extrabold text-teal-700 bg-teal-50 w-6 h-6 rounded-lg flex items-center justify-center shrink-0">${letter}</span>
+                                        <input type="text" placeholder="Opsi ${letter}..." value="${q['pilihan' + letter] || ''}" oninput="updateField(${q.id}, 'pilihan${letter}', this.value)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-teal-500 touch-target">
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div class="mt-3">
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Kunci Jawaban:</label>
+                                <select onchange="updateField(${q.id}, 'jawaban', this.value)" class="w-full bg-teal-50 border border-teal-100 text-teal-800 font-bold text-xs rounded-xl px-3 py-2.5 outline-none touch-target">
+                                    <option value="">-- Pilih --</option>
+                                    ${['A','B','C','D'].map(letter => `<option value="${letter}" ${q.jawaban === letter ? 'selected' : ''}>${letter}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                    `;
+                } else if (q.tipe === 'PGK') {
+                    const jawArr = q.jawaban ? q.jawaban.split(';').map(j => j.trim().toUpperCase()) : [];
+                    optionsHtml = `
+                        <div class="space-y-2 mt-3 pt-2.5 border-t border-slate-100">
+                            <span class="block text-xs font-bold text-slate-500 mb-1">Pilihan (bisa lebih dari 1):</span>
+                            ${['A','B','C','D'].map(letter => `
+                                <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border">
+                                    <input type="checkbox" ${jawArr.includes(letter) ? 'checked' : ''} onchange="togglePgkAnswer(${q.id}, '${letter}')" class="w-4 h-4 text-teal-600 rounded focus:ring-teal-500">
+                                    <span class="text-xs font-bold text-slate-700">${letter}.</span>
+                                    <input type="text" placeholder="Opsi ${letter}..." value="${q['pilihan' + letter] || ''}" oninput="updateField(${q.id}, 'pilihan${letter}', this.value)" class="flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-teal-500">
+                                </div>
+                            `).join('')}
+                            <div class="bg-orange-50 text-orange-600 text-[10px] p-2.5 rounded-xl font-bold border border-orange-100 mt-2">
+                                <i class="bi bi-info-circle-fill me-1"></i> Kunci: ${q.jawaban || '(Belum dipilih)'}
+                            </div>
+                        </div>
+                    `;
+                } else if (q.tipe === 'MENJODOHKAN') {
+                    optionsHtml = `
+                        <div class="space-y-3 mt-3 pt-2.5 border-t border-slate-100">
+                            <span class="block text-xs font-bold text-slate-500">Pasangkan Kolom Kiri & Kanan:</span>
+                            <div class="space-y-2">
+                                <span class="block text-[10px] font-extrabold text-teal-700"><i class="bi bi-arrow-right-circle"></i> Sisi Kiri:</span>
+                                ${[0,1,2].map(i => `
+                                    <input type="text" placeholder="Kiri ${i+1}..." value="${q.kiri[i] || ''}" oninput="updateMatchingArray(${q.id}, 'kiri', ${i}, this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-teal-500 touch-target">
+                                `).join('')}
+                            </div>
+                            <div class="space-y-2 mt-3">
+                                <span class="block text-[10px] font-extrabold text-orange-600"><i class="bi bi-arrow-left-circle"></i> Sisi Kanan:</span>
+                                ${['A','B','C','D'].map(letter => `
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-bold text-slate-400">${letter}.</span>
+                                        <input type="text" placeholder="Opsi ${letter}..." value="${q['pilihan' + letter] || ''}" oninput="updateField(${q.id}, 'pilihan${letter}', this.value)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-teal-500 touch-target">
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div class="mt-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                                <span class="block text-xs font-bold text-slate-700 mb-2"><i class="bi bi-link-45deg"></i> Kunci Pasangan:</span>
+                                ${[0,1,2].map(i => `
+                                    <div class="flex items-center justify-between text-xs mb-1.5">
+                                        <span class="text-slate-600 font-medium">Kiri ${i+1} →</span>
+                                        <select onchange="updateJodohIndex(${q.id}, ${i}, this.value)" class="bg-white border rounded-lg p-1.5 font-bold text-teal-800">
+                                            ${['A','B','C','D'].map(letter => `<option value="${letter}" ${q.jodohIndex[i] === letter ? 'selected' : ''}>${letter}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                } else if (q.tipe === 'ISIAN') {
+                    optionsHtml = `
+                        <div class="space-y-2 mt-3 pt-2.5 border-t border-slate-100">
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Kunci Jawaban (pisah dengan | jika alternatif):</label>
+                            <input type="text" placeholder="Contoh: Pupil | pupil" value="${q.jawaban || ''}" oninput="updateField(${q.id}, 'jawaban', this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-teal-500 focus:bg-white touch-target">
+                            <p class="text-[9px] text-slate-400"><i class="bi bi-info-circle me-1"></i>Sistem akan menyesuaikan koreksi jika siswa salah spasi atau huruf kapital.</p>
+                        </div>
+                    `;
+                }
+
+                const cardHtml = `
+                    <div class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 fade-in">
+                        <div class="flex items-center justify-between border-b border-slate-50 pb-2 mb-3">
+                            <span class="text-xs font-black text-teal-800 bg-teal-50 px-2.5 py-1 rounded-lg">Soal ${index + 1}</span>
+                            <button onclick="removeQuestion(${q.id})" class="text-slate-400 hover:text-red-500 p-1.5 rounded-lg active:scale-95 transition-all" title="Hapus Soal">
+                                <i class="bi bi-trash-fill text-sm"></i>
+                            </button>
+                        </div>
+                        <div class="mb-3">
+                            <label class="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Tipe Soal:</label>
+                            <div class="grid grid-cols-4 gap-1.5">
+                                ${['PG','PGK','MENJODOHKAN','ISIAN'].map(type => `
+                                    <button onclick="changeQuestionType(${q.id}, '${type}')" class="py-1.5 text-[10px] font-bold rounded-xl border ${q.tipe === type ? 'bg-teal-700 text-white border-teal-700' : 'bg-slate-50 text-slate-600 border-slate-100'} transition-all active:scale-95">
+                                        ${type === 'MENJODOHKAN' ? 'Jodohkan' : type}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Pertanyaan / Instruksi:</label>
+                            <textarea rows="2" placeholder="Tulis pertanyaan di sini..." oninput="updateField(${q.id}, 'pertanyaan', this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-teal-500 focus:bg-white resize-none touch-target">${q.pertanyaan || ''}</textarea>
+                        </div>
+                        ${optionsHtml}
+                    </div>
+                `;
+
+                container.insertAdjacentHTML('beforeend', cardHtml);
+            });
+        }
+
+        // ============================================================
+        // GENERATE AI - MENGGUNAKAN MODEL gemini-3-flash-preview
+        // ============================================================
+        async function generateQuestionsWithGemini() {
+            const apiKey = document.getElementById("api_key_input").value.trim();
+            const topic = document.getElementById("ai_topic_input").value.trim();
+            const subject = document.getElementById("ai_subject_input").value;
+            const className = document.getElementById("ai_class_input").value;
+            const numPG = parseInt(document.getElementById("num_pg").value) || 0;
+            const numPGK = parseInt(document.getElementById("num_pgk").value) || 0;
+            const numMatch = parseInt(document.getElementById("num_matching").value) || 0;
+            const numIsian = parseInt(document.getElementById("num_isian").value) || 0;
+
+            // Validasi
+            if (!apiKey) {
+                showToast("Masukkan API Key Gemini terlebih dahulu!", false);
+                document.getElementById("api_key_input").focus();
+                return;
+            }
+            if (!topic) {
+                showToast("Masukkan Topik / Materi terlebih dahulu!", false);
+                document.getElementById("ai_topic_input").focus();
+                return;
+            }
+            const total = numPG + numPGK + numMatch + numIsian;
+            if (total <= 0) {
+                showToast("Tentukan minimal 1 jumlah soal!", false);
+                return;
+            }
+
+            // Tampilkan loader
+            const loader = document.getElementById("ai_loader_overlay");
+            const btn = document.getElementById("btn_generate_ai");
+            loader.classList.remove("hidden");
+            btn.disabled = true;
+            btn.innerHTML = `<span class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span> Menghasilkan...`;
+
+            try {
+                // ========== SISTEM PROMPT ==========
+                const systemPrompt = "Anda adalah asisten pembuatan kuis kurikulum SD di Indonesia kelas 4-6. Anda harus selalu menjawab dalam bentuk format JSON terstruktur yang valid secara mutlak.";
+
+                // ========== USER PROMPT ==========
+                const userPrompt = `Buatkan soal kuis mata pelajaran "${subject}" untuk tingkat "${className}" mengenai topik materi "${topic}".
+Jumlah soal:
+- Pilihan Ganda (PG): ${numPG}
+- Pilihan Ganda Kompleks (PGK): ${numPGK}
+- Menjodohkan: ${numMatch}
+- Isian Singkat: ${numIsian}
+
+Format output HARUS berupa JSON ARRAY dengan struktur:
+[
+  {
+    "tipe": "PG",
+    "pertanyaan": "teks soal",
+    "pilihanA": "opsi A",
+    "pilihanB": "opsi B",
+    "pilihanC": "opsi C",
+    "pilihanD": "opsi D",
+    "jawaban": "A",
+    "kiri": [],
+    "jodohIndex": []
+  }
+]
+
+Aturan:
+- PG: jawaban "A","B","C","D"
+- PGK: jawaban kombinasi "A;C"
+- MENJODOHKAN: kiri=[3 item], jawaban="B;A;C"
+- ISIAN: jawaban="kunci jawaban"
+
+HANYA output JSON ARRAY, tanpa teks lain, tanpa markdown.`;
+
+                // ========== URL API ==========
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                // ========== PAYLOAD ==========
+                const payload = {
+                    contents: [{ 
+                        parts: [{ text: userPrompt }] 
+                    }],
+                    generationConfig: {
+                        temperature: 0.3,
+                        maxOutputTokens: 2048,
+                        topP: 0.95,
+                        topK: 40
+                    },
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    }
+                };
+
+                console.log('📤 Mengirim request ke Gemini...');
+
+                // ========== EKSEKUSI FETCH ==========
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error?.message || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('📥 Response Gemini:', result);
+
+                const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (!jsonText) {
+                    throw new Error('Tidak ada respons dari AI');
+                }
+
+                // ========== CLEAN & PARSE JSON ==========
+                let clean = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+                let match = clean.match(/\[[\s\S]*\]/);
+                if (!match) {
+                    throw new Error('Format JSON Array tidak ditemukan dalam respons');
+                }
+
+                const parsedQuestions = JSON.parse(match[0]);
+                
+                if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
+                    throw new Error('JSON bukan array atau kosong');
+                }
+
+                // ========== FORMAT ULANG ID ==========
+                let currentMaxId = questions.length > 0 ? Math.max(...questions.map(q => q.id)) : 0;
+                const cleanQuestions = parsedQuestions.map((q, idx) => {
+                    const kiriList = Array.isArray(q.kiri) && q.kiri.length >= 3 ? q.kiri : ['', '', ''];
+                    const jodohList = Array.isArray(q.jodohIndex) && q.jodohIndex.length >= 3 ? q.jodohIndex : ['A', 'B', 'C'];
+
+                    let jawaban = q.jawaban || '';
+                    if (q.tipe === 'MENJODOHKAN' && Array.isArray(jawaban)) {
+                        jawaban = jawaban.join(';');
+                    }
+
+                    return {
+                        id: currentMaxId + idx + 1,
+                        tipe: q.tipe || 'PG',
+                        pertanyaan: q.pertanyaan || '',
+                        pilihanA: q.pilihanA || '',
+                        pilihanB: q.pilihanB || '',
+                        pilihanC: q.pilihanC || '',
+                        pilihanD: q.pilihanD || '',
+                        jawaban: jawaban,
+                        kiri: kiriList,
+                        jodohIndex: jodohList
+                    };
+                });
+
+                // ========== TAMBAHKAN KE LIST SOAL ==========
+                questions = [...questions, ...cleanQuestions];
+                
+                // Bersihkan soal kosong default pertama jika masih ada
+                if (questions.length > 1 && questions[0].pertanyaan === "" && questions[0].pilihanA === "") {
+                    questions.shift();
+                }
+
+                renderQuestions();
+                updateCounter();
+                showToast(`✅ Berhasil merancang ${cleanQuestions.length} butir soal lewat AI!`, true);
+
+            } catch (err) {
+                console.error('❌ AI Error:', err);
+                showToast("❌ Gagal generate: " + err.message, false);
+            } finally {
+                loader.classList.add("hidden");
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-cpu"></i> Generate Soal dengan AI`;
+            }
+        }
+
+        // ============================================================
+        // DOWNLOAD EXCEL
+        // ============================================================
+        function downloadExcelQuiz() {
+            if (questions.length === 0) {
+                showToast("Tidak ada soal untuk di-download!", false);
+                return;
+            }
+
+            const startDate = document.getElementById('quiz_start_date').value.replace('T', ' ') || new Date().toLocaleString('id-ID');
+            const endDate = document.getElementById('quiz_end_date').value.replace('T', ' ') || new Date(Date.now() + 7*24*60*60*1000).toLocaleString('id-ID');
+            const duration = document.getElementById('quiz_duration').value || 30;
+
+            const rows = questions.map((q, i) => {
+                let jawaban = q.jawaban || '';
+                if (q.tipe === 'MENJODOHKAN') {
+                    jawaban = q.jodohIndex.join(';');
+                }
+                return {
+                    "Waktu Mulai": i === 0 ? startDate : "",
+                    "Waktu Selesai": i === 0 ? endDate : "",
+                    "Durasi (Menit)": i === 0 ? duration : "",
+                    "Tipe": q.tipe || 'PG',
+                    "Pertanyaan": q.pertanyaan || '',
+                    "Pilihan A": q.pilihanA || '',
+                    "Pilihan B": q.pilihanB || '',
+                    "Pilihan C": q.pilihanC || '',
+                    "Pilihan D": q.pilihanD || '',
+                    "Jawaban": jawaban
+                };
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(rows);
+            XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+            XLSX.writeFile(wb, "kuis.xlsx");
+            showToast("✅ File 'kuis.xlsx' berhasil di-download!", true);
+        }
+
+        // ============================================================
+        // IMPORT EXCEL
+        // ============================================================
+        function importExistingExcel(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+
+                    if (jsonData.length === 0) {
+                        showToast("File Excel kosong!", false);
+                        return;
+                    }
+
+                    const first = jsonData[0];
+                    if (first['Waktu Mulai']) {
+                        document.getElementById('quiz_start_date').value = first['Waktu Mulai'].replace(' ', 'T');
+                    }
+                    if (first['Waktu Selesai']) {
+                        document.getElementById('quiz_end_date').value = first['Waktu Selesai'].replace(' ', 'T');
+                    }
+                    if (first['Durasi (Menit)']) {
+                        document.getElementById('quiz_duration').value = first['Durasi (Menit)'];
+                    }
+
+                    questions = jsonData.map((row, idx) => {
+                        let rawType = (row['Tipe'] || 'PG').toString().trim();
+                        let pertanyaan = row['Pertanyaan'] || '';
+                        let jawaban = (row['Jawaban'] || '').toString().trim();
+                        let kiri = ['', '', ''];
+                        let jodohIndex = ['A', 'B', 'C'];
+
+                        if (rawType === 'MENJODOHKAN') {
+                            const parts = pertanyaan.split(';');
+                            pertanyaan = parts[0] || '';
+                            kiri = [parts[1] || '', parts[2] || '', parts[3] || ''];
+                            const jodoh = jawaban.split(';');
+                            jodohIndex = [jodoh[0] || 'A', jodoh[1] || 'B', jodoh[2] || 'C'];
+                        }
+
+                        return {
+                            id: idx + 1,
+                            tipe: rawType,
+                            pertanyaan: pertanyaan,
+                            pilihanA: row['Pilihan A'] || '',
+                            pilihanB: row['Pilihan B'] || '',
+                            pilihanC: row['Pilihan C'] || '',
+                            pilihanD: row['Pilihan D'] || '',
+                            jawaban: jawaban,
+                            kiri: kiri,
+                            jodohIndex: jodohIndex
+                        };
+                    });
+
+                    renderQuestions();
+                    updateCounter();
+                    showToast(`✅ Berhasil mengimpor ${questions.length} soal!`, true);
+                } catch (err) {
+                    console.error(err);
+                    showToast("❌ Gagal mengimpor: " + err.message, false);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            e.target.value = '';
+        }
+
+        // ============================================================
+        // RESET SPREADSHEET - DIREKT KE APPS SCRIPT
+        // ============================================================
+        async function resetSpreadsheetDirect() {
+            if (isResetting) {
+                showToast('⏳ Proses reset sedang berjalan...', false);
+                return;
+            }
+
+            const spreadsheetId = getSpreadsheetIdFromDashboard();
+
+            if (!spreadsheetId) {
+                showToast('⚠️ SPREADSHEET_ID tidak ditemukan!', false);
+                showConfirm(
+                    '📋 Masukkan Spreadsheet ID secara manual:\n\n' +
+                    'Buka Google Sheets Anda, copy ID dari URL:\n' +
+                    'https://docs.google.com/spreadsheets/d/[ID_ANDI]/edit\n\n' +
+                    'Masukkan ID di bawah ini:',
+                    () => {
+                        const id = prompt('Masukkan Spreadsheet ID:');
+                        if (id && id.length > 10) {
+                            saveSpreadsheetId(id);
+                            document.getElementById('manual_spreadsheet_id').value = id;
+                            showToast('✅ Spreadsheet ID berhasil disimpan!', true);
+                            setTimeout(() => resetSpreadsheetDirect(), 500);
+                        }
+                    }
+                );
+                return;
+            }
+
+            showConfirm(
+                '⚠️ PERINGATAN: Ini akan menghapus SEMUA data di sheet "Buat_Kuis"!\n\n' +
+                `📊 Spreadsheet ID: ${spreadsheetId.substring(0, 20)}...\n\n` +
+                'Apakah Anda yakin ingin melanjutkan?',
+                async () => {
+                    isResetting = true;
+                    const btn = document.getElementById('btn_reset');
+                    btn.disabled = true;
+                    btn.innerHTML = `<span class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span> Resetting...`;
+
+                    try {
+                        let url = document.getElementById('script_url').value.trim() || 
+                                  localStorage.getItem('script_url') || '';
+
+                        if (!url) {
+                            showToast('⚠️ URL Apps Script tidak ditemukan!', false);
+                            isResetting = false;
+                            btn.disabled = false;
+                            btn.innerHTML = `<i class="bi bi-arrow-counterclockwise text-sm"></i> Reset`;
+                            return;
+                        }
+
+                        showToast('⏳ Menghapus data dari Google Sheets...', true);
+
+                        let success = false;
+                        let errorMessages = [];
+
+                        try {
+                            const resetPayload = {
+                                action: 'reset_sheet',
+                                sheet_name: 'Buat_Kuis'
+                            };
+
+                            console.log('📤 Mengirim reset ke Apps Script:', resetPayload);
+
+                            await fetch(url, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(resetPayload)
+                            });
+
+                            success = true;
+                            console.log('✅ Reset request terkirim ke Apps Script');
+                            showToast('✅ Data berhasil direset!', true);
+
+                        } catch (e) {
+                            errorMessages.push(`Apps Script POST: ${e.message}`);
+                            console.warn('❌ Apps Script POST gagal:', e.message);
+                        }
+
+                        if (!success) {
+                            try {
+                                const getUrl = url + '?action=reset_sheet';
+                                console.log('📤 Mencoba GET reset:', getUrl);
+                                
+                                await fetch(getUrl, {
+                                    method: 'GET',
+                                    mode: 'no-cors'
+                                });
+                                
+                                success = true;
+                                console.log('✅ GET reset request terkirim');
+                                showToast('✅ Data berhasil direset!', true);
+                                
+                            } catch (e) {
+                                errorMessages.push(`Apps Script GET: ${e.message}`);
+                                console.warn('❌ Apps Script GET gagal:', e.message);
+                            }
+                        }
+
+                        if (!success) {
+                            console.error('❌ Semua metode reset gagal:', errorMessages);
+                            
+                            questions = [];
+                            addNewQuestion();
+                            renderQuestions();
+                            updateCounter();
+
+                            const manualLink = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+                            showToast('❌ Gagal reset otomatis. Buka spreadsheet manual.', false);
+                            
+                            setTimeout(() => {
+                                showConfirm(
+                                    `❌ Gagal reset otomatis!\n\n` +
+                                    `📊 Buka spreadsheet:\n${manualLink}\n\n` +
+                                    `🗑️ Hapus baris 2 sampai bawah di sheet "Buat_Kuis"\n\n` +
+                                    `🔑 Spreadsheet ID: ${spreadsheetId.substring(0, 20)}...\n\n` +
+                                    `⚠️ Error: ${errorMessages.join('; ')}`,
+                                    () => {
+                                        window.open(manualLink, '_blank');
+                                    }
+                                );
+                            }, 1000);
+                            return;
+                        }
+
+                        questions = [];
+                        addNewQuestion();
+                        renderQuestions();
+                        updateCounter();
+
+                        showToast('✅ Data berhasil direset!', true);
+
+                        setTimeout(async () => {
+                            try {
+                                const verifyResponse = await fetch(url + '?action=get_kuis');
+                                if (verifyResponse.ok) {
+                                    const result = await verifyResponse.json();
+                                    if (result.status === 'success' && result.data && result.data.length === 0) {
+                                        showToast('✅ Terverifikasi! Sheet sudah kosong.', true);
+                                    }
+                                }
+                            } catch (e) {
+                                console.log('Verifikasi tidak bisa dilakukan karena CORS');
+                            }
+                        }, 3000);
+
+                    } catch (error) {
+                        console.error('❌ Error reset:', error);
+                        showToast('❌ Gagal reset: ' + error.message, false);
+                    } finally {
+                        isResetting = false;
+                        btn.disabled = false;
+                        btn.innerHTML = `<i class="bi bi-arrow-counterclockwise text-sm"></i> Reset`;
+                    }
+                }
+            );
+        }
+
+        // ============================================================
+        // KIRIM KE APPS SCRIPT
+        // ============================================================
+        async function sendToAppsScript() {
+            if (isSending) {
+                showToast('⏳ Proses sedang berjalan, tunggu sebentar...', false);
+                return;
+            }
+
+            let url = document.getElementById('script_url').value.trim() || localStorage.getItem('script_url') || '';
+
+            if (!url) {
+                showToast('Masukkan URL Apps Script terlebih dahulu!', false);
+                document.getElementById('script_url').focus();
+                return;
+            }
+
+            localStorage.setItem('script_url', url);
+            saveValueToDashboard('script_url', url);
+            document.getElementById('script_status_text').textContent = '✅ URL tersimpan';
+            document.getElementById('script_status_text').className = 'text-emerald-600';
+
+            if (questions.length === 0) {
+                showToast('Tidak ada soal untuk dikirim!', false);
+                return;
+            }
+
+            for (let i = 0; i < questions.length; i++) {
+                const q = questions[i];
+                if (!q.pertanyaan.trim()) {
+                    showToast(`Soal ${i+1}: Pertanyaan masih kosong!`, false);
+                    return;
+                }
+                if (!q.jawaban) {
+                    showToast(`Soal ${i+1}: Kunci jawaban belum ditentukan!`, false);
+                    return;
+                }
+                if (q.tipe === 'MENJODOHKAN' && (!q.kiri[0] || !q.kiri[1] || !q.kiri[2])) {
+                    showToast(`Soal ${i+1}: Isi semua sisi kiri untuk Menjodohkan!`, false);
+                    return;
+                }
+            }
+
+            showConfirm(`Kirim ${questions.length} soal ke Google Sheets?`, async () => {
+                isSending = true;
+                const btn = document.getElementById('btn_send');
+                btn.disabled = true;
+                btn.innerHTML = `<span class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span> Mengirim...`;
+
+                try {
+                    const startDate = document.getElementById('quiz_start_date').value || new Date().toISOString().slice(0, 16);
+                    const endDate = document.getElementById('quiz_end_date').value || new Date(Date.now() + 7*24*60*60*1000).toISOString().slice(0, 16);
+                    const duration = parseInt(document.getElementById('quiz_duration').value) || 30;
+
+                    const payload = {
+                        action: 'save_kuis',
+                        metadata: {
+                            waktu_mulai: startDate.replace('T', ' '),
+                            waktu_selesai: endDate.replace('T', ' '),
+                            durasi: duration
+                        },
+                        questions: questions.map(q => ({
+                            tipe: q.tipe || 'PG',
+                            pertanyaan: q.pertanyaan || '',
+                            pilihanA: q.pilihanA || '',
+                            pilihanB: q.pilihanB || '',
+                            pilihanC: q.pilihanC || '',
+                            pilihanD: q.pilihanD || '',
+                            jawaban: q.jawaban || '',
+                            kiri: q.kiri || ['', '', ''],
+                            jodohIndex: q.jodohIndex || ['A', 'B', 'C']
+                        }))
+                    };
+
+                    console.log('📤 Mengirim data:', JSON.stringify(payload, null, 2));
+
+                    showToast('⏳ Mengirim data ke server...', true);
+
+                    await fetch(url, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    showToast('✅ Data berhasil dikirim! Silakan cek spreadsheet.', true);
+
+                    setTimeout(async () => {
+                        try {
+                            const verifyResponse = await fetch(url + '?action=get_kuis');
+                            if (verifyResponse.ok) {
+                                const verifyResult = await verifyResponse.json();
+                                if (verifyResult.status === 'success' && verifyResult.data && verifyResult.data.length > 0) {
+                                    showToast(`✅ Terverifikasi! ${verifyResult.data.length} soal tersimpan.`, true);
+                                }
+                            }
+                        } catch (e) {
+                            console.log('Verifikasi tidak bisa dilakukan karena CORS');
+                        }
+                    }, 5000);
+
+                } catch (error) {
+                    console.error('❌ Error:', error);
+                    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                        showToast('⚠️ Data mungkin sudah terkirim. Cek spreadsheet secara manual.', false);
+                    } else {
+                        showToast('❌ Gagal mengirim: ' + error.message, false);
+                    }
+                } finally {
+                    isSending = false;
+                    btn.disabled = false;
+                    btn.innerHTML = `<i class="bi bi-cloud-upload-fill text-sm"></i> Kirim Kuis`;
+                }
+            });
+        }
+
+        // ============================================================
+        // LOAD FROM APPS SCRIPT
+        // ============================================================
+        async function loadFromAppsScript() {
+            let url = document.getElementById('script_url').value.trim() || localStorage.getItem('script_url') || '';
+
+            if (!url) {
+                showToast('Masukkan URL Apps Script terlebih dahulu!', false);
+                document.getElementById('script_url').focus();
+                return;
+            }
+
+            const btn = document.getElementById('btn_load');
+            btn.disabled = true;
+            btn.innerHTML = `<span class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span> Memuat...`;
+
+            try {
+                showToast('⏳ Memuat data dari server...', true);
+
+                const response = await fetch(url + '?action=get_kuis');
+                const result = await response.json();
+
+                if (result.status === 'success' && result.data && result.data.length > 0) {
+                    const loadedQuestions = result.data.map((row, idx) => {
+                        let rawType = (row['Tipe'] || 'PG').toString().trim();
+                        let pertanyaan = row['Pertanyaan'] || '';
+                        let jawaban = (row['Jawaban'] || '').toString().trim();
+                        let kiri = ['', '', ''];
+                        let jodohIndex = ['A', 'B', 'C'];
+
+                        if (rawType === 'MENJODOHKAN') {
+                            const parts = pertanyaan.split(';');
+                            pertanyaan = parts[0] || '';
+                            kiri = [parts[1] || '', parts[2] || '', parts[3] || ''];
+                            const jodoh = jawaban.split(';');
+                            jodohIndex = [jodoh[0] || 'A', jodoh[1] || 'B', jodoh[2] || 'C'];
+                        }
+
+                        return {
+                            id: idx + 1,
+                            tipe: rawType,
+                            pertanyaan: pertanyaan,
+                            pilihanA: row['Pilihan A'] || '',
+                            pilihanB: row['Pilihan B'] || '',
+                            pilihanC: row['Pilihan C'] || '',
+                            pilihanD: row['Pilihan D'] || '',
+                            jawaban: jawaban,
+                            kiri: kiri,
+                            jodohIndex: jodohIndex
+                        };
+                    });
+
+                    questions = loadedQuestions;
+                    renderQuestions();
+                    updateCounter();
+                    showToast(`✅ Berhasil memuat ${questions.length} soal dari spreadsheet!`, true);
+                } else {
+                    showToast('ℹ️ Belum ada data di spreadsheet', false);
+                }
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    showToast('⚠️ Gagal memuat data. Cek koneksi dan URL Apps Script.', false);
+                } else {
+                    showToast('❌ Gagal memuat data: ' + error.message, false);
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-cloud-download-fill text-sm"></i> Muat Data`;
+            }
+        }
+
+        // ============================================================
+        // RESIZE HANDLER
+        // ============================================================
+        window.addEventListener('resize', function() {
+            // Tidak ada aksi khusus
+        });
+
+    </script>
+
+</body>
+</html>
