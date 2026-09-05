@@ -3453,7 +3453,7 @@ function clearAllData() {
     }
 
     function openKelaskuLink() {
-      window.open('https://belajar-teknologi.github.io/menuju_digital/asisten.html', '_blank', 'noopener,noreferrer');
+      window.open('asisten.html', '_blank', 'noopener,noreferrer');
     }
 
     function openKuisPage() {
@@ -3608,18 +3608,38 @@ function clearAllData() {
               <canvas id="chart-grades" class="w-full max-h-72"></canvas>
             </div>
           </div>
+
+          <!-- Statistik Hasil Kuis -->
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div>
+                <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <i class="fa-solid fa-clipboard-check text-emerald-600"></i> Statistik Hasil Kuis
+                </h3>
+                <p class="text-[10px] text-slate-400">Ringkasan peserta, rata-rata, nilai tertinggi, dan 10 besar untuk kuis yang dibuat guru.</p>
+              </div>
+              <span id="quiz-stats-count" class="text-[10px] bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-full font-bold">Memuat...</span>
+            </div>
+            <div id="quiz-stats-summary" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4"></div>
+            <div id="quiz-stats-content" class="space-y-4">
+              <div class="text-xs text-slate-400 text-center py-8">Memuat statistik hasil kuis...</div>
+            </div>
+          </div>
         </div>
       `;
 
       // Load Stats & Charts
-      const [studentsRes, subjectsRes, attendanceRes, gradesRes] = await Promise.all([
-        apiCall('getStudents'), apiCall('getSubjects'), apiCall('getAttendance'), apiCall('getGrades')
+      const [studentsRes, subjectsRes, attendanceRes, gradesRes, quizzesRes, quizResultsRes] = await Promise.all([
+        apiCall('getStudents'), apiCall('getSubjects'), apiCall('getAttendance'), apiCall('getGrades'),
+        apiCall('getQuizzes'), apiCall('getQuizResults')
       ]);
 
       const allStudents = Array.isArray(studentsRes.data) ? studentsRes.data : [];
       const allSubjects = Array.isArray(subjectsRes.data) ? subjectsRes.data : [];
       const attendance = Array.isArray(attendanceRes.data) ? attendanceRes.data : [];
       const allGrades = Array.isArray(gradesRes.data) ? gradesRes.data : [];
+      const allQuizzes = Array.isArray(quizzesRes.data) ? quizzesRes.data : [];
+      const allQuizResults = Array.isArray(quizResultsRes.data) ? quizResultsRes.data : [];
       const teacherClass = String(currentUser && currentUser.Kelas || '').trim();
 
       // Dashboard Guru difokuskan pada kelas yang sedang ditangani guru.
@@ -3845,6 +3865,145 @@ function clearAllData() {
           }
         });
         gradesCanvas.parentElement.style.height = '330px';
+      }
+
+      // ==========================
+      // STATISTIK HASIL KUIS
+      // ==========================
+      const quizStatsContent = document.getElementById('quiz-stats-content');
+      const quizStatsSummary = document.getElementById('quiz-stats-summary');
+      const quizStatsCount = document.getElementById('quiz-stats-count');
+
+      const quizList = allQuizzes.filter(q => String(q.ID || '').trim());
+      const quizResultRows = allQuizResults.filter(r => String(r.KuisID || r.QuizID || '').trim());
+
+      const normalizeQuizRows = (quizId) => {
+        const rows = quizResultRows
+          .filter(r => String(r.KuisID || r.QuizID || '').trim() === String(quizId).trim())
+          .map(r => ({
+            nis: String(r.NIS || r.nis || '').trim(),
+            nama: String(r.NamaSiswa || r.Nama || 'Siswa').trim() || 'Siswa',
+            nilai: Number(r.Nilai),
+            benar: Number(r.Benar) || 0,
+            salah: Number(r.Salah) || 0,
+            durasi: Number(r.DurasiDetik) || 0
+          }))
+          .filter(r => Number.isFinite(r.nilai) && (r.nis || r.nama));
+
+        const unique = {};
+        rows.forEach(r => {
+          const key = r.nis || r.nama.toLowerCase();
+          if (!unique[key] || r.nilai > unique[key].nilai) unique[key] = r;
+        });
+        return Object.values(unique).sort((a,b) =>
+          b.nilai - a.nilai ||
+          a.durasi - b.durasi ||
+          a.nama.localeCompare(b.nama, 'id')
+        );
+      };
+
+      const quizStats = quizList.map(q => {
+        const rows = normalizeQuizRows(q.ID);
+        const avg = rows.length ? rows.reduce((sum,r) => sum + r.nilai, 0) / rows.length : 0;
+        const top = rows.length ? rows[0].nilai : 0;
+        return {
+          id: String(q.ID),
+          title: String(q.Judul || q.Title || 'Kuis'),
+          mapel: String(q.KodeMapel || q.Mapel || '').trim(),
+          kelas: String(q.Kelas || '').trim(),
+          jumlahSoal: Number(q.JumlahSoal) || 0,
+          peserta: rows.length,
+          avg,
+          top,
+          rows
+        };
+      });
+
+      quizStatsCount.textContent = quizStats.length + ' kuis';
+
+      const totalPesertaUnik = new Set(quizResultRows.map(r => String(r.NIS || '').trim()).filter(Boolean)).size;
+      const totalPengerjaan = quizStats.reduce((sum,q) => sum + q.peserta, 0);
+      const avgSemua = totalPengerjaan
+        ? quizStats.reduce((sum,q) => sum + q.rows.reduce((s,r) => s + r.nilai, 0), 0) / totalPengerjaan
+        : 0;
+      const nilaiTertinggi = quizStats.reduce((m,q) => Math.max(m,q.top), 0);
+
+      quizStatsSummary.innerHTML = `
+        <div class="bg-indigo-50 rounded-xl p-3">
+          <div class="text-[10px] text-indigo-600 font-semibold">Total Kuis</div>
+          <div class="text-xl font-black text-indigo-700">${quizStats.length}</div>
+        </div>
+        <div class="bg-emerald-50 rounded-xl p-3">
+          <div class="text-[10px] text-emerald-600 font-semibold">Siswa Peserta</div>
+          <div class="text-xl font-black text-emerald-700">${totalPesertaUnik}</div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-3">
+          <div class="text-[10px] text-slate-500 font-semibold">Rata-rata Semua Hasil</div>
+          <div class="text-xl font-black text-slate-700">${avgSemua.toFixed(1)}</div>
+        </div>
+        <div class="bg-amber-50 rounded-xl p-3">
+          <div class="text-[10px] text-amber-600 font-semibold">Nilai Tertinggi</div>
+          <div class="text-xl font-black text-amber-700">${nilaiTertinggi.toFixed(1)}</div>
+        </div>
+      `;
+
+      if (!quizStats.length) {
+        quizStatsContent.innerHTML = '<div class="text-xs text-slate-400 text-center py-8">Belum ada kuis yang dibuat.</div>';
+      } else {
+        const quizTimestamp = id => {
+          const m = String(id || '').match(/^KUIS-(\d+)$/i);
+          return m ? Number(m[1]) : 0;
+        };
+        quizStats.sort((a,b) => quizTimestamp(b.id) - quizTimestamp(a.id));
+
+        quizStatsContent.innerHTML = quizStats.map(q => {
+          const top10 = q.rows.slice(0,10);
+          const rowsHtml = top10.length
+            ? top10.map((r,i) => `
+                <tr class="${i < 3 ? 'bg-amber-50/40' : ''}">
+                  <td class="p-2 text-center font-bold">${i+1}</td>
+                  <td class="p-2">${escapeHtml(r.nama)}</td>
+                  <td class="p-2 text-center font-bold">${r.nilai.toFixed(1)}</td>
+                  <td class="p-2 text-center">${r.benar}</td>
+                  <td class="p-2 text-center">${r.salah}</td>
+                </tr>
+              `).join('')
+            : '<tr><td colspan="5" class="p-4 text-center text-slate-400">Belum ada siswa yang mengerjakan kuis ini.</td></tr>';
+
+          return `
+            <div class="border border-slate-200 rounded-2xl overflow-hidden">
+              <div class="px-4 py-3 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div class="font-bold text-sm text-slate-800">${escapeHtml(q.title)}</div>
+                  <div class="text-[10px] text-slate-400 mt-0.5">
+                    ${escapeHtml(q.mapel || 'Mapel belum ditentukan')}
+                    ${q.kelas ? ' • Kelas ' + escapeHtml(q.kelas) : ''}
+                    ${q.jumlahSoal ? ' • ' + q.jumlahSoal + ' soal' : ''}
+                  </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2 text-center text-[10px]">
+                  <div class="bg-white rounded-lg px-3 py-1.5 border"><b class="text-slate-800">${q.peserta}</b><br><span class="text-slate-400">Peserta</span></div>
+                  <div class="bg-white rounded-lg px-3 py-1.5 border"><b class="text-indigo-700">${q.avg.toFixed(1)}</b><br><span class="text-slate-400">Rata-rata</span></div>
+                  <div class="bg-white rounded-lg px-3 py-1.5 border"><b class="text-amber-600">${q.top.toFixed(1)}</b><br><span class="text-slate-400">Tertinggi</span></div>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-[11px]">
+                  <thead class="bg-white border-b">
+                    <tr>
+                      <th class="p-2 text-center">Rank</th>
+                      <th class="p-2 text-left">Nama Siswa</th>
+                      <th class="p-2 text-center">Nilai</th>
+                      <th class="p-2 text-center">Benar</th>
+                      <th class="p-2 text-center">Salah</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }).join('');
       }
     }
 
