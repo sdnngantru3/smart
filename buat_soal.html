@@ -1,1566 +1,1748 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pembuat Soal Kuis - SDN 3 Ngantru</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-    <style>
-        * {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-        }
-        ::-webkit-scrollbar {
-            width: 4px;
-            height: 4px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f1f5f9;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 4px;
-        }
-        .touch-target {
-            min-height: 48px;
-        }
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #0f766e;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .fade-in {
-            animation: fadeIn 0.3s ease-in-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .toast {
-            animation: slideUp 0.3s ease-in-out;
-        }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .btn-loading {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-        .reset-btn {
-            transition: all 0.3s ease;
-        }
-        .reset-btn:hover {
-            transform: scale(1.05);
-        }
-        .reset-btn:active {
-            transform: scale(0.95);
-        }
-        .spreadsheet-id-display {
-            font-size: 10px;
-            background: #f1f5f9;
-            padding: 4px 10px;
-            border-radius: 20px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        .status-dot.connected {
-            background: #10b981;
-            animation: pulse 1.5s infinite;
-        }
-        .status-dot.disconnected {
-            background: #ef4444;
-        }
-        .status-dot.unknown {
-            background: #94a3b8;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pembuat Kuis - EduSmart LMS</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+body{font-family:'Plus Jakarta Sans',sans-serif}.scroll::-webkit-scrollbar{width:6px}.scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:8px}
+.modal{background:rgba(15,23,42,.55);backdrop-filter:blur(4px)}
+</style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col max-w-[480px] mx-auto shadow-2xl">
-
-    <div id="appContainer" class="flex flex-col min-h-screen">
-        
-        <!-- ============================================================ -->
-        <!-- HEADER -->
-        <!-- ============================================================ -->
-        <header class="bg-teal-700 text-white px-4 py-3.5 sticky top-0 z-50 shadow-md">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2.5">
-                    <div class="bg-white/10 p-2 rounded-xl">
-                        <i class="bi bi-robot text-xl text-orange-500"></i>
-                    </div>
-                    <div>
-                        <h1 class="font-extrabold text-base tracking-tight leading-tight">Pembuat Soal Kuis</h1>
-                        <p class="text-[10px] text-teal-100 font-medium">SDN 3 Ngantru</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <label for="importExcelInput" class="bg-teal-800 hover:bg-teal-900 text-white rounded-xl px-2.5 py-1.5 text-xs font-bold cursor-pointer flex items-center gap-1.5 border border-white/10 active:scale-95 transition-all">
-                        <i class="bi bi-file-earmark-arrow-up text-sm text-teal-300"></i> Impor
-                    </label>
-                    <input type="file" id="importExcelInput" accept=".xlsx, .xls" class="hidden" onchange="importExistingExcel(event)">
-                    <button onclick="clearAllQuestions()" class="bg-rose-600 hover:bg-rose-700 text-white rounded-xl px-2.5 py-1.5 text-xs font-bold border border-white/10 active:scale-95 transition-all">
-                        <i class="bi bi-trash3 text-sm"></i>
-                    </button>
-                </div>
-            </div>
-            <!-- Spreadsheet ID Status -->
-            <div id="spreadsheetStatus" class="hidden mt-2 px-2 py-1.5 bg-teal-800/50 rounded-xl">
-                <div class="flex items-center justify-between text-[10px]">
-                    <span class="text-teal-200 flex items-center gap-1">
-                        <i class="bi bi-table"></i> Sheet ID:
-                    </span>
-                    <span id="spreadsheetIdDisplay" class="font-mono text-teal-100 font-bold truncate max-w-[200px]"></span>
-                    <button onclick="copySpreadsheetId()" class="text-teal-300 hover:text-white transition-colors" title="Salin ID">
-                        <i class="bi bi-copy"></i>
-                    </button>
-                </div>
-            </div>
-        </header>
-
-        <!-- ============================================================ -->
-        <!-- MAIN CONTENT -->
-        <!-- ============================================================ -->
-        <main class="flex-1 p-4 space-y-4 pb-32 overflow-y-auto">
-            
-            <!-- ========================================================== -->
-            <!-- PANEL AI GENERATOR -->
-            <!-- ========================================================== -->
-            <section class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3.5 fade-in">
-                <div class="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-                    <i class="bi bi-magic text-orange-500 text-lg"></i>
-                    <h2 class="font-bold text-slate-900 text-sm">Generator Soal AI</h2>
-                    <span class="ml-auto text-[8px] bg-slate-100 px-2 py-0.5 rounded-full text-slate-400">Gemini 3 Flash</span>
-                </div>
-
-                <div class="space-y-3">
-                    <!-- API KEY -->
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1 flex items-center justify-between">
-                            <span>API Key Gemini</span>
-                            <a href="https://aistudio.google.com/" target="_blank" class="text-[10px] text-indigo-600 hover:underline flex items-center gap-0.5">
-                                Dapatkan Key <i class="bi bi-box-arrow-up-right text-[8px]"></i>
-                            </a>
-                        </label>
-                        <input type="password" id="api_key_input" placeholder="Masukkan AIzaSy... atau AQ.Ab..." 
-                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target font-mono">
-                        <p class="text-[9px] text-slate-400 mt-1">🔒 API Key tersimpan di browser</p>
-                    </div>
-
-                    <!-- TOPIK -->
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Topik / Materi <span class="text-red-500">*</span></label>
-                        <input type="text" id="ai_topic_input" placeholder="Contoh: Operasi Hitung Pecahan, Sistem Pencernaan Manusia" 
-                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all font-semibold touch-target">
-                    </div>
-
-                    <!-- MAPEL & KELAS -->
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran</label>
-                            <select id="ai_subject_input" class="w-full px-2 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
-                                <option value="Bahasa Indonesia">Bahasa Indonesia</option>
-                                <option value="Matematika" selected>Matematika</option>
-                                <option value="IPA">IPA</option>
-                                <option value="IPS">IPS</option>
-                                <option value="Bahasa Inggris">Bahasa Inggris</option>
-                                <option value="PPKn">PPKn</option>
-                                <option value="PJOK">PJOK</option>
-                                <option value="Seni Budaya">Seni Budaya</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Kelas</label>
-                            <select id="ai_class_input" class="w-full px-2 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
-                                <option value="Kelas 1 SD">Kelas 1 SD</option>
-                                <option value="Kelas 2 SD">Kelas 2 SD</option>
-                                <option value="Kelas 3 SD">Kelas 3 SD</option>
-                                <option value="Kelas 4 SD">Kelas 4 SD</option>
-                                <option value="Kelas 5 SD" selected>Kelas 5 SD</option>
-                                <option value="Kelas 6 SD">Kelas 6 SD</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- TIPE SOAL -->
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Target Tipe Soal</label>
-                        <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
-                            <div class="flex items-center justify-between text-xs">
-                                <span class="font-medium text-slate-600">P. Ganda</span>
-                                <input type="number" id="num_pg" value="2" min="0" max="10" class="w-12 text-center py-1 border rounded-lg font-bold">
-                            </div>
-                            <div class="flex items-center justify-between text-xs">
-                                <span class="font-medium text-slate-600">PG Kompleks</span>
-                                <input type="number" id="num_pgk" value="1" min="0" max="10" class="w-12 text-center py-1 border rounded-lg font-bold">
-                            </div>
-                            <div class="flex items-center justify-between text-xs">
-                                <span class="font-medium text-slate-600">Menjodohkan</span>
-                                <input type="number" id="num_matching" value="1" min="0" max="10" class="w-12 text-center py-1 border rounded-lg font-bold">
-                            </div>
-                            <div class="flex items-center justify-between text-xs">
-                                <span class="font-medium text-slate-600">Isian</span>
-                                <input type="number" id="num_isian" value="1" min="0" max="10" class="w-12 text-center py-1 border rounded-lg font-bold">
-                            </div>
-                        </div>
-                    </div>
-
-                    <button id="btn_generate_ai" onclick="generateQuestionsWithGemini()" 
-                        class="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:scale-95 transition-all text-white font-extrabold text-xs py-3 rounded-2xl shadow-md shadow-orange-200 flex items-center justify-center gap-2 touch-target">
-                        <i class="bi bi-cpu"></i> Generate Soal dengan AI
-                    </button>
-                </div>
-            </section>
-
-            <!-- ========================================================== -->
-            <!-- PANEL METADATA KUIS -->
-            <!-- ========================================================== -->
-            <section class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3.5 fade-in">
-                <div class="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-                    <i class="bi bi-calendar-event text-teal-700 text-lg"></i>
-                    <h2 class="font-bold text-slate-900 text-sm">Pengaturan Kuis</h2>
-                </div>
-                
-                <div class="grid grid-cols-1 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Waktu Mulai</label>
-                        <input type="datetime-local" id="quiz_start_date" 
-                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Waktu Selesai</label>
-                        <input type="datetime-local" id="quiz_end_date" 
-                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-600 mb-1">Durasi (Menit)</label>
-                        <input type="number" id="quiz_duration" value="30" min="1" max="180"
-                            class="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all touch-target">
-                    </div>
-                </div>
-            </section>
-
-            <!-- ========================================================== -->
-            <!-- PANEL APPS SCRIPT -->
-            <!-- ========================================================== -->
-            <section class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3 fade-in">
-                <div class="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-                    <i class="bi bi-cloud-upload text-teal-700 text-lg"></i>
-                    <h2 class="font-bold text-slate-900 text-sm">Kirim ke Google Sheets</h2>
-                    <span id="connection_status" class="ml-auto text-[8px] flex items-center gap-1">
-                        <span class="status-dot unknown" id="statusDot"></span>
-                        <span class="text-slate-400" id="statusText">Belum terhubung</span>
-                    </span>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-slate-600 mb-1">URL Apps Script</label>
-                    <div class="flex gap-2">
-                        <input type="url" id="script_url" placeholder="https://script.google.com/macros/s/.../exec" 
-                            class="flex-1 px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all font-mono touch-target">
-                        <button onclick="saveScriptUrl()" class="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all active:scale-95 whitespace-nowrap">
-                            <i class="bi bi-save"></i> Simpan
-                        </button>
-                        <button onclick="testConnection()" class="px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95">
-                            <i class="bi bi-wifi"></i>
-                        </button>
-                    </div>
-                    <div id="script_status" class="mt-1.5 text-[10px] text-slate-400 flex items-center gap-1.5">
-                        <i class="bi bi-info-circle"></i>
-                        <span id="script_status_text">Belum ada URL tersimpan</span>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-3 gap-2">
-                    <button onclick="sendToAppsScript()" id="btn_send" class="w-full bg-teal-700 hover:bg-teal-800 active:scale-95 transition-all text-white font-extrabold text-xs py-3 rounded-2xl shadow-lg shadow-teal-200 flex items-center justify-center gap-2 touch-target">
-                        <i class="bi bi-cloud-upload-fill text-sm"></i> Kirim
-                    </button>
-                    <button onclick="loadFromAppsScript()" id="btn_load" class="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition-all text-white font-extrabold text-xs py-3 rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 touch-target">
-                        <i class="bi bi-cloud-download-fill text-sm"></i> Muat
-                    </button>
-                    <button onclick="resetSpreadsheetDirect()" id="btn_reset" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all text-white font-extrabold text-xs py-3 rounded-2xl shadow-lg shadow-rose-200 flex items-center justify-center gap-2 touch-target reset-btn">
-                        <i class="bi bi-arrow-counterclockwise text-sm"></i> Reset
-                    </button>
-                </div>
-                <div class="text-[9px] text-slate-400 text-center mt-1">
-                    <i class="bi bi-info-circle me-1"></i>Reset akan menghapus semua data di sheet "Buat_Kuis"
-                </div>
-            </section>
-
-            <!-- ========================================================== -->
-            <!-- PANEL SPREADSHEET ID MANUAL -->
-            <!-- ========================================================== -->
-            <section class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3 fade-in">
-                <div class="flex items-center gap-2 border-b border-slate-100 pb-2.5">
-                    <i class="bi bi-database text-teal-700 text-lg"></i>
-                    <h2 class="font-bold text-slate-900 text-sm">Spreadsheet ID</h2>
-                </div>
-                
-                <div>
-                    <label class="block text-xs font-bold text-slate-600 mb-1">Masukkan Spreadsheet ID Manual</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="manual_spreadsheet_id" 
-                            placeholder="Contoh: 1ABC123DEF456..." 
-                            class="flex-1 px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-teal-500 focus:bg-white outline-none transition-all font-mono touch-target">
-                        <button onclick="saveManualSpreadsheetId()" 
-                            class="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all active:scale-95 whitespace-nowrap">
-                            <i class="bi bi-save"></i> Simpan
-                        </button>
-                    </div>
-                    <p class="text-[9px] text-slate-400 mt-1.5">
-                        <i class="bi bi-info-circle me-1"></i>
-                        ID bisa didapat dari URL: <span class="font-mono text-slate-600">docs.google.com/spreadsheets/d/<b>[ID_ANDI]</b>/edit</span>
-                    </p>
-                </div>
-            </section>
-
-            <!-- ========================================================== -->
-            <!-- LOADING OVERLAY -->
-            <!-- ========================================================== -->
-            <div id="ai_loader_overlay" class="hidden bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center space-y-3">
-                <div class="spinner"></div>
-                <div>
-                    <h4 class="text-xs font-bold text-slate-800">Menghubungi AI Gemini...</h4>
-                    <p class="text-[10px] text-slate-400 mt-1 max-w-xs mx-auto">Sedang merancang soal-soal berkualitas untuk siswa Anda.</p>
-                </div>
-            </div>
-
-            <!-- ========================================================== -->
-            <!-- DAFTAR SOAL -->
-            <!-- ========================================================== -->
-            <div class="flex items-center justify-between">
-                <h3 class="font-bold text-slate-700 text-sm">Daftar Soal</h3>
-                <span id="question_counter_text" class="text-xs bg-slate-100 px-3 py-1 rounded-full text-slate-600 font-semibold">Total: 0 Soal</span>
-            </div>
-
-            <section id="questionsList" class="space-y-4">
-                <!-- Soal akan dirender di sini -->
-            </section>
-
-            <!-- ========================================================== -->
-            <!-- TAMBAH SOAL MANUAL -->
-            <!-- ========================================================== -->
-            <div class="pt-2 text-center">
-                <button onclick="addNewQuestion()" class="w-full bg-teal-50 hover:bg-teal-100 text-teal-700 border-2 border-dashed border-teal-200 rounded-2xl py-3.5 text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 touch-target">
-                    <i class="bi bi-plus-circle-fill text-sm"></i> Tambah Soal Manual
-                </button>
-            </div>
-
-        </main>
-
-        <!-- ============================================================ -->
-        <!-- FOOTER / BOTTOM BAR -->
-        <!-- ============================================================ -->
-        <footer class="bg-white border-t border-slate-100 p-4 fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto z-40 rounded-t-3xl shadow-2xl">
-            <div class="flex items-center gap-3">
-                <button onclick="downloadExcelQuiz()" class="flex-1 bg-orange-500 hover:bg-orange-600 active:scale-95 transition-all text-white py-3 px-4 rounded-2xl font-extrabold text-xs shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 touch-target">
-                    <i class="bi bi-file-excel text-sm"></i> Download Excel
-                </button>
-                <button onclick="window.location.reload()" class="px-4 py-3 bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all rounded-2xl text-slate-600">
-                    <i class="bi bi-arrow-counterclockwise"></i>
-                </button>
-            </div>
-        </footer>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- TOAST NOTIFICATION -->
-    <!-- ============================================================ -->
-    <div id="customToast" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs px-4 py-3 rounded-2xl shadow-lg flex items-center gap-2 opacity-0 pointer-events-none transition-all duration-300 max-w-[90%]">
-        <i id="toast_icon" class="bi bi-info-circle-fill text-teal-400"></i>
-        <span id="toast_text" class="flex-1">Pesan...</span>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- MODAL CONFIRMATION -->
-    <!-- ============================================================ -->
-    <div id="customConfirmModal" class="fixed inset-0 bg-black/50 z-[999] flex items-center justify-center p-4 hidden">
-        <div class="bg-white rounded-3xl p-5 w-full max-w-[360px] space-y-4 shadow-2xl max-h-[80vh] overflow-y-auto">
-            <h4 class="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
-                <i class="bi bi-exclamation-triangle text-orange-500"></i> Konfirmasi
-            </h4>
-            <p id="confirm_modal_message" class="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">Apakah Anda yakin?</p>
-            <div class="flex gap-2 justify-end">
-                <button id="btn_confirm_cancel" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">Batal</button>
-                <button id="btn_confirm_ok" class="px-4 py-2 bg-orange-500 text-white text-xs font-bold rounded-xl">Ya, Lanjutkan</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- JAVASCRIPT -->
-    <!-- ============================================================ -->
-    <script>
-        // ============================================================
-        // STATE
-        // ============================================================
-        let questions = [];
-        let SCRIPT_URL = localStorage.getItem('script_url') || '';
-        let isSending = false;
-        let isResetting = false;
-
-        // ============================================================
-        // FUNGSI UNTUK MEMBACA DARI DASHBOARD (kompatibel dengan dashboard_demo.html)
-        // ============================================================
-        function getValueFromDashboard(key) {
-            try {
-                const localValue = localStorage.getItem(key);
-                if (localValue) return localValue;
-
-                const sessionValue = sessionStorage.getItem(key);
-                if (sessionValue) return sessionValue;
-
-                if (window.sharedData && window.sharedData[key]) {
-                    return window.sharedData[key];
-                }
-
-                const cookies = document.cookie.split(';');
-                for (let cookie of cookies) {
-                    const [name, value] = cookie.trim().split('=');
-                    if (name === key) {
-                        return decodeURIComponent(value);
-                    }
-                }
-
-                return null;
-            } catch (e) {
-                console.warn('Gagal membaca data dari dashboard:', e);
-                return null;
-            }
-        }
-
-        function saveValueToDashboard(key, value) {
-            try {
-                localStorage.setItem(key, value);
-                sessionStorage.setItem(key, value);
-                if (!window.sharedData) window.sharedData = {};
-                window.sharedData[key] = value;
-                document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=31536000`;
-            } catch (e) {
-                console.warn('Gagal menyimpan data:', e);
-            }
-        }
-
-        // ============================================================
-        // FUNGSI SPREADSHEET ID (otomatis dari localStorage)
-        // ============================================================
-        function getSpreadsheetIdFromDashboard() {
-            const sources = [
-                () => localStorage.getItem('spreadsheet_id'),
-                () => sessionStorage.getItem('spreadsheet_id'),
-                () => getValueFromDashboard('spreadsheet_id'),
-                () => {
-                    const params = new URLSearchParams(window.location.search);
-                    return params.get('spreadsheet_id');
-                },
-                () => {
-                    const cookies = document.cookie.split(';');
-                    for (let cookie of cookies) {
-                        const [name, value] = cookie.trim().split('=');
-                        if (name === 'spreadsheet_id') {
-                            return decodeURIComponent(value);
-                        }
-                    }
-                    return null;
-                }
-            ];
-
-            for (let source of sources) {
-                try {
-                    const value = source();
-                    if (value && value.length > 10) {
-                        console.log(`✅ Spreadsheet ID ditemukan: ${value.substring(0, 15)}...`);
-                        return value;
-                    }
-                } catch (e) {
-                    // Lanjut ke sumber berikutnya
-                }
-            }
-
-            console.warn('⚠️ Spreadsheet ID tidak ditemukan di manapun');
-            return null;
-        }
-
-        function saveSpreadsheetId(spreadsheetId) {
-            if (!spreadsheetId || spreadsheetId.length < 10) return;
-            try {
-                localStorage.setItem('spreadsheet_id', spreadsheetId);
-                sessionStorage.setItem('spreadsheet_id', spreadsheetId);
-                saveValueToDashboard('spreadsheet_id', spreadsheetId);
-                document.cookie = `spreadsheet_id=${encodeURIComponent(spreadsheetId)}; path=/; max-age=31536000`;
-                console.log('✅ Spreadsheet ID tersimpan di localStorage');
-            } catch (e) {
-                console.warn('Gagal menyimpan spreadsheet ID:', e);
-            }
-        }
-
-        function copySpreadsheetId() {
-            const id = getSpreadsheetIdFromDashboard();
-            if (id) {
-                navigator.clipboard.writeText(id).then(() => {
-                    showToast('✅ Spreadsheet ID disalin!', true);
-                }).catch(() => {
-                    const input = document.createElement('input');
-                    input.value = id;
-                    document.body.appendChild(input);
-                    input.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(input);
-                    showToast('✅ Spreadsheet ID disalin!', true);
-                });
-            }
-        }
-
-        function saveManualSpreadsheetId() {
-            const id = document.getElementById('manual_spreadsheet_id').value.trim();
-            if (id && id.length > 10) {
-                saveSpreadsheetId(id);
-                const statusEl = document.getElementById('spreadsheetStatus');
-                const displayEl = document.getElementById('spreadsheetIdDisplay');
-                if (statusEl && displayEl) {
-                    statusEl.classList.remove('hidden');
-                    displayEl.textContent = id.substring(0, 20) + '...';
-                }
-                showToast('✅ Spreadsheet ID berhasil disimpan!', true);
-                document.getElementById('manual_spreadsheet_id').value = '';
-            } else {
-                showToast('⚠️ Masukkan ID yang valid (minimal 10 karakter)', false);
-            }
-        }
-
-        // ============================================================
-        // INISIALISASI
-        // ============================================================
-        window.onload = function() {
-            addNewQuestion();
-            
-            const now = new Date();
-            const startDate = new Date(now.getTime() + 30 * 60000);
-            document.getElementById('quiz_start_date').value = startDate.toISOString().slice(0, 16);
-            const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60000);
-            document.getElementById('quiz_end_date').value = endDate.toISOString().slice(0, 16);
-            document.getElementById('quiz_duration').value = 30;
-
-            // ========== AMBIL API KEY DARI LOCALSTORAGE ==========
-            const apiKeyFromDashboard = getValueFromDashboard('gemini_api_key');
-            const apiKeyFromLocal = localStorage.getItem('gemini_api_key');
-            const finalApiKey = apiKeyFromDashboard || apiKeyFromLocal || '';
-            if (finalApiKey) {
-                document.getElementById('api_key_input').value = finalApiKey;
-                localStorage.setItem('gemini_api_key', finalApiKey);
-                saveValueToDashboard('gemini_api_key', finalApiKey);
-            }
-
-            // ========== AMBIL SCRIPT URL DARI LOCALSTORAGE ==========
-            const scriptUrlFromDashboard = getValueFromDashboard('script_url');
-            const scriptUrlFromLocal = localStorage.getItem('script_url');
-            const finalScriptUrl = scriptUrlFromDashboard || scriptUrlFromLocal || '';
-            if (finalScriptUrl) {
-                SCRIPT_URL = finalScriptUrl;
-                document.getElementById('script_url').value = finalScriptUrl;
-                localStorage.setItem('script_url', finalScriptUrl);
-                saveValueToDashboard('script_url', finalScriptUrl);
-                document.getElementById('script_status_text').textContent = '✅ URL tersimpan: ' + finalScriptUrl.substring(0, 35) + '...';
-                document.getElementById('script_status_text').className = 'text-emerald-600';
-                testConnection();
-            }
-
-            // ========== AMBIL SPREADSHEET ID DARI LOCALSTORAGE ==========
-            const spreadsheetId = getSpreadsheetIdFromDashboard();
-            if (spreadsheetId) {
-                saveSpreadsheetId(spreadsheetId);
-                const statusEl = document.getElementById('spreadsheetStatus');
-                const displayEl = document.getElementById('spreadsheetIdDisplay');
-                if (statusEl && displayEl) {
-                    statusEl.classList.remove('hidden');
-                    displayEl.textContent = spreadsheetId.substring(0, 20) + '...';
-                }
-            }
-
-            // ========== EVENT AUTO-SAVE API KEY ==========
-            document.getElementById('api_key_input').addEventListener('change', function() {
-                const value = this.value.trim();
-                if (value && value.length > 5) {
-                    localStorage.setItem('gemini_api_key', value);
-                    saveValueToDashboard('gemini_api_key', value);
-                }
-            });
-
-            document.getElementById('api_key_input').addEventListener('input', function() {
-                const value = this.value.trim();
-                if (value && value.length > 5) {
-                    localStorage.setItem('gemini_api_key', value);
-                    saveValueToDashboard('gemini_api_key', value);
-                }
-            });
-        };
-
-        // ============================================================
-        // TOAST & CONFIRM
-        // ============================================================
-        function showToast(message, isSuccess = true) {
-            const toast = document.getElementById("customToast");
-            const toastText = document.getElementById("toast_text");
-            const toastIcon = document.getElementById("toast_icon");
-
-            toastText.innerText = message;
-            toastIcon.className = isSuccess ? "bi bi-check-circle-fill text-emerald-400" : "bi bi-exclamation-circle-fill text-orange-500";
-
-            toast.classList.remove("opacity-0", "pointer-events-none");
-            toast.classList.add("opacity-100");
-
-            clearTimeout(toast._timeout);
-            toast._timeout = setTimeout(() => {
-                toast.classList.add("opacity-0", "pointer-events-none");
-                toast.classList.remove("opacity-100");
-            }, 5000);
-        }
-
-        function showConfirm(message, callback) {
-            const modal = document.getElementById("customConfirmModal");
-            const msgText = document.getElementById("confirm_modal_message");
-            const btnCancel = document.getElementById("btn_confirm_cancel");
-            const btnOk = document.getElementById("btn_confirm_ok");
-
-            msgText.innerText = message;
-            modal.classList.remove("hidden");
-
-            btnCancel.onclick = function() { modal.classList.add("hidden"); };
-            btnOk.onclick = function() { modal.classList.add("hidden"); callback(); };
-        }
-
-        // ============================================================
-        // APPS SCRIPT CONNECTION
-        // ============================================================
-        function saveScriptUrl() {
-            const url = document.getElementById('script_url').value.trim();
-            if (url) {
-                SCRIPT_URL = url;
-                localStorage.setItem('script_url', url);
-                saveValueToDashboard('script_url', url);
-                document.getElementById('script_status_text').textContent = '✅ URL tersimpan: ' + url.substring(0, 35) + '...';
-                document.getElementById('script_status_text').className = 'text-emerald-600';
-                showToast('URL berhasil disimpan!', true);
-                testConnection();
-            } else {
-                showToast('Masukkan URL terlebih dahulu!', false);
-            }
-        }
-
-        function updateConnectionStatus(status, message) {
-            const dot = document.getElementById('statusDot');
-            const text = document.getElementById('statusText');
-            
-            dot.className = 'status-dot';
-            if (status === 'connected') {
-                dot.classList.add('connected');
-                text.className = 'text-emerald-600';
-                text.textContent = message || 'Terhubung';
-            } else if (status === 'disconnected') {
-                dot.classList.add('disconnected');
-                text.className = 'text-rose-600';
-                text.textContent = message || 'Gagal';
-            } else {
-                dot.classList.add('unknown');
-                text.className = 'text-slate-400';
-                text.textContent = message || 'Belum terhubung';
-            }
-        }
-
-        async function testConnection() {
-            let url = document.getElementById('script_url').value.trim() || localStorage.getItem('script_url') || '';
-            if (!url) {
-                updateConnectionStatus('unknown', 'Belum ada URL');
-                return;
-            }
-
-            try {
-                const response = await fetch(url + '?action=ping');
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    updateConnectionStatus('connected', 'Terhubung');
-                    showToast('✅ Koneksi ke server berhasil!', true);
-                } else {
-                    updateConnectionStatus('disconnected', 'Gagal');
-                    showToast('⚠️ Gagal terhubung ke server', false);
-                }
-            } catch (error) {
-                updateConnectionStatus('unknown', 'CORS Mode');
-                console.log('Ping gagal karena CORS, tapi data tetap bisa dikirim dengan mode no-cors');
-            }
-        }
-
-        // ============================================================
-        // CRUD SOAL
-        // ============================================================
-        function updateCounter() {
-            document.getElementById('question_counter_text').innerText = `Total: ${questions.length} Soal`;
-        }
-
-        function addNewQuestion() {
-            const nextId = questions.length > 0 ? Math.max(...questions.map(q => q.id)) + 1 : 1;
-            questions.push({
-                id: nextId,
-                tipe: 'PG',
-                pertanyaan: '',
-                pilihanA: '',
-                pilihanB: '',
-                pilihanC: '',
-                pilihanD: '',
-                jawaban: '',
-                kiri: ['', '', ''],
-                jodohIndex: ['A', 'B', 'C']
-            });
-            renderQuestions();
-            updateCounter();
-        }
-
-        function removeQuestion(id) {
-            if (questions.length <= 1) {
-                showToast("Minimal harus ada 1 soal!", false);
-                return;
-            }
-            showConfirm("Hapus soal ini?", () => {
-                questions = questions.filter(q => q.id !== id);
-                renderQuestions();
-                updateCounter();
-                showToast("Soal berhasil dihapus!");
-            });
-        }
-
-        function clearAllQuestions() {
-            if (questions.length === 0) {
-                showToast("Tidak ada soal untuk dihapus", false);
-                return;
-            }
-            showConfirm("Hapus SEMUA soal?", () => {
-                questions = [];
-                addNewQuestion();
-                renderQuestions();
-                updateCounter();
-                showToast("Semua soal telah dihapus!");
-            });
-        }
-
-        function changeQuestionType(id, newType) {
-            const q = questions.find(q => q.id === id);
-            if (q) {
-                q.tipe = newType;
-                q.jawaban = '';
-                renderQuestions();
-            }
-        }
-
-        function updateField(id, fieldName, value) {
-            const q = questions.find(q => q.id === id);
-            if (q) q[fieldName] = value;
-        }
-
-        function updateMatchingArray(id, arrayName, index, value) {
-            const q = questions.find(q => q.id === id);
-            if (q && q[arrayName]) q[arrayName][index] = value;
-        }
-
-        function togglePgkAnswer(qId, val) {
-            const q = questions.find(q => q.id === qId);
-            if (!q) return;
-            let answers = q.jawaban ? q.jawaban.split(';').map(j => j.trim()) : [];
-            answers = answers.includes(val) ? answers.filter(a => a !== val) : [...answers, val];
-            q.jawaban = answers.sort().join(';');
-            renderQuestions();
-        }
-
-        function updateJodohIndex(qId, rowIndex, selectedOpt) {
-            const q = questions.find(q => q.id === qId);
-            if (q) q.jodohIndex[rowIndex] = selectedOpt;
-        }
-
-        // ============================================================
-        // RENDER SOAL
-        // ============================================================
-        function renderQuestions() {
-            const container = document.getElementById('questionsList');
-            container.innerHTML = '';
-
-            questions.forEach((q, index) => {
-                let optionsHtml = '';
-
-                if (q.tipe === 'PG') {
-                    optionsHtml = `
-                        <div class="space-y-2 mt-3 pt-2.5 border-t border-slate-100">
-                            <span class="block text-xs font-bold text-slate-500 mb-1">Pilihan Jawaban:</span>
-                            <div class="grid grid-cols-1 gap-2">
-                                ${['A','B','C','D'].map(letter => `
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-xs font-extrabold text-teal-700 bg-teal-50 w-6 h-6 rounded-lg flex items-center justify-center shrink-0">${letter}</span>
-                                        <input type="text" placeholder="Opsi ${letter}..." value="${q['pilihan' + letter] || ''}" oninput="updateField(${q.id}, 'pilihan${letter}', this.value)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-teal-500 touch-target">
-                                    </div>
-                                `).join('')}
-                            </div>
-                            <div class="mt-3">
-                                <label class="block text-xs font-bold text-slate-600 mb-1">Kunci Jawaban:</label>
-                                <select onchange="updateField(${q.id}, 'jawaban', this.value)" class="w-full bg-teal-50 border border-teal-100 text-teal-800 font-bold text-xs rounded-xl px-3 py-2.5 outline-none touch-target">
-                                    <option value="">-- Pilih --</option>
-                                    ${['A','B','C','D'].map(letter => `<option value="${letter}" ${q.jawaban === letter ? 'selected' : ''}>${letter}</option>`).join('')}
-                                </select>
-                            </div>
-                        </div>
-                    `;
-                } else if (q.tipe === 'PGK') {
-                    const jawArr = q.jawaban ? q.jawaban.split(';').map(j => j.trim().toUpperCase()) : [];
-                    optionsHtml = `
-                        <div class="space-y-2 mt-3 pt-2.5 border-t border-slate-100">
-                            <span class="block text-xs font-bold text-slate-500 mb-1">Pilihan (bisa lebih dari 1):</span>
-                            ${['A','B','C','D'].map(letter => `
-                                <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border">
-                                    <input type="checkbox" ${jawArr.includes(letter) ? 'checked' : ''} onchange="togglePgkAnswer(${q.id}, '${letter}')" class="w-4 h-4 text-teal-600 rounded focus:ring-teal-500">
-                                    <span class="text-xs font-bold text-slate-700">${letter}.</span>
-                                    <input type="text" placeholder="Opsi ${letter}..." value="${q['pilihan' + letter] || ''}" oninput="updateField(${q.id}, 'pilihan${letter}', this.value)" class="flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-teal-500">
-                                </div>
-                            `).join('')}
-                            <div class="bg-orange-50 text-orange-600 text-[10px] p-2.5 rounded-xl font-bold border border-orange-100 mt-2">
-                                <i class="bi bi-info-circle-fill me-1"></i> Kunci: ${q.jawaban || '(Belum dipilih)'}
-                            </div>
-                        </div>
-                    `;
-                } else if (q.tipe === 'MENJODOHKAN') {
-                    optionsHtml = `
-                        <div class="space-y-3 mt-3 pt-2.5 border-t border-slate-100">
-                            <span class="block text-xs font-bold text-slate-500">Pasangkan Kolom Kiri & Kanan:</span>
-                            <div class="space-y-2">
-                                <span class="block text-[10px] font-extrabold text-teal-700"><i class="bi bi-arrow-right-circle"></i> Sisi Kiri:</span>
-                                ${[0,1,2].map(i => `
-                                    <input type="text" placeholder="Kiri ${i+1}..." value="${q.kiri[i] || ''}" oninput="updateMatchingArray(${q.id}, 'kiri', ${i}, this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-teal-500 touch-target">
-                                `).join('')}
-                            </div>
-                            <div class="space-y-2 mt-3">
-                                <span class="block text-[10px] font-extrabold text-orange-600"><i class="bi bi-arrow-left-circle"></i> Sisi Kanan:</span>
-                                ${['A','B','C','D'].map(letter => `
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-xs font-bold text-slate-400">${letter}.</span>
-                                        <input type="text" placeholder="Opsi ${letter}..." value="${q['pilihan' + letter] || ''}" oninput="updateField(${q.id}, 'pilihan${letter}', this.value)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-teal-500 touch-target">
-                                    </div>
-                                `).join('')}
-                            </div>
-                            <div class="mt-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                <span class="block text-xs font-bold text-slate-700 mb-2"><i class="bi bi-link-45deg"></i> Kunci Pasangan:</span>
-                                ${[0,1,2].map(i => `
-                                    <div class="flex items-center justify-between text-xs mb-1.5">
-                                        <span class="text-slate-600 font-medium">Kiri ${i+1} →</span>
-                                        <select onchange="updateJodohIndex(${q.id}, ${i}, this.value)" class="bg-white border rounded-lg p-1.5 font-bold text-teal-800">
-                                            ${['A','B','C','D'].map(letter => `<option value="${letter}" ${q.jodohIndex[i] === letter ? 'selected' : ''}>${letter}</option>`).join('')}
-                                        </select>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    `;
-                } else if (q.tipe === 'ISIAN') {
-                    optionsHtml = `
-                        <div class="space-y-2 mt-3 pt-2.5 border-t border-slate-100">
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Kunci Jawaban (pisah dengan | jika alternatif):</label>
-                            <input type="text" placeholder="Contoh: Pupil | pupil" value="${q.jawaban || ''}" oninput="updateField(${q.id}, 'jawaban', this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-teal-500 focus:bg-white touch-target">
-                            <p class="text-[9px] text-slate-400"><i class="bi bi-info-circle me-1"></i>Sistem akan menyesuaikan koreksi jika siswa salah spasi atau huruf kapital.</p>
-                        </div>
-                    `;
-                }
-
-                const cardHtml = `
-                    <div class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 fade-in">
-                        <div class="flex items-center justify-between border-b border-slate-50 pb-2 mb-3">
-                            <span class="text-xs font-black text-teal-800 bg-teal-50 px-2.5 py-1 rounded-lg">Soal ${index + 1}</span>
-                            <button onclick="removeQuestion(${q.id})" class="text-slate-400 hover:text-red-500 p-1.5 rounded-lg active:scale-95 transition-all" title="Hapus Soal">
-                                <i class="bi bi-trash-fill text-sm"></i>
-                            </button>
-                        </div>
-                        <div class="mb-3">
-                            <label class="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Tipe Soal:</label>
-                            <div class="grid grid-cols-4 gap-1.5">
-                                ${['PG','PGK','MENJODOHKAN','ISIAN'].map(type => `
-                                    <button onclick="changeQuestionType(${q.id}, '${type}')" class="py-1.5 text-[10px] font-bold rounded-xl border ${q.tipe === type ? 'bg-teal-700 text-white border-teal-700' : 'bg-slate-50 text-slate-600 border-slate-100'} transition-all active:scale-95">
-                                        ${type === 'MENJODOHKAN' ? 'Jodohkan' : type}
-                                    </button>
-                                `).join('')}
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-600 mb-1">Pertanyaan / Instruksi:</label>
-                            <textarea rows="2" placeholder="Tulis pertanyaan di sini..." oninput="updateField(${q.id}, 'pertanyaan', this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-teal-500 focus:bg-white resize-none touch-target">${q.pertanyaan || ''}</textarea>
-                        </div>
-                        ${optionsHtml}
-                    </div>
-                `;
-
-                container.insertAdjacentHTML('beforeend', cardHtml);
-            });
-        }
-
-        // ============================================================
-        // GENERATE AI - MENGGUNAKAN MODEL gemini-3-flash-preview
-        // ============================================================
-        async function generateQuestionsWithGemini() {
-            const apiKey = document.getElementById("api_key_input").value.trim();
-            const topic = document.getElementById("ai_topic_input").value.trim();
-            const subject = document.getElementById("ai_subject_input").value;
-            const className = document.getElementById("ai_class_input").value;
-            const numPG = parseInt(document.getElementById("num_pg").value) || 0;
-            const numPGK = parseInt(document.getElementById("num_pgk").value) || 0;
-            const numMatch = parseInt(document.getElementById("num_matching").value) || 0;
-            const numIsian = parseInt(document.getElementById("num_isian").value) || 0;
-
-            // Validasi
-            if (!apiKey) {
-                showToast("Masukkan API Key Gemini terlebih dahulu!", false);
-                document.getElementById("api_key_input").focus();
-                return;
-            }
-            if (!topic) {
-                showToast("Masukkan Topik / Materi terlebih dahulu!", false);
-                document.getElementById("ai_topic_input").focus();
-                return;
-            }
-            const total = numPG + numPGK + numMatch + numIsian;
-            if (total <= 0) {
-                showToast("Tentukan minimal 1 jumlah soal!", false);
-                return;
-            }
-
-            // Tampilkan loader
-            const loader = document.getElementById("ai_loader_overlay");
-            const btn = document.getElementById("btn_generate_ai");
-            loader.classList.remove("hidden");
-            btn.disabled = true;
-            btn.innerHTML = `<span class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span> Menghasilkan...`;
-
-            try {
-                // ========== SISTEM PROMPT ==========
-                const systemPrompt = "Anda adalah asisten pembuatan kuis kurikulum SD di Indonesia kelas 4-6. Anda harus selalu menjawab dalam bentuk format JSON terstruktur yang valid secara mutlak.";
-
-                // ========== USER PROMPT ==========
-                const userPrompt = `Buatkan soal kuis mata pelajaran "${subject}" untuk tingkat "${className}" mengenai topik materi "${topic}".
-Jumlah soal:
-- Pilihan Ganda (PG): ${numPG}
-- Pilihan Ganda Kompleks (PGK): ${numPGK}
-- Menjodohkan: ${numMatch}
-- Isian Singkat: ${numIsian}
-
-Format output HARUS berupa JSON ARRAY dengan struktur:
-[
-  {
-    "tipe": "PG",
-    "pertanyaan": "teks soal",
-    "pilihanA": "opsi A",
-    "pilihanB": "opsi B",
-    "pilihanC": "opsi C",
-    "pilihanD": "opsi D",
-    "jawaban": "A",
-    "kiri": [],
-    "jodohIndex": []
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+<div id="toast" class="fixed top-4 right-4 z-[100] space-y-2 max-w-sm"></div>
+<header class="sticky top-0 z-40 bg-indigo-700 text-white shadow-lg">
+ <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+  <div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl bg-white text-indigo-700 flex items-center justify-center shadow"><i class="fa-solid fa-circle-question text-xl"></i></div><div><h1 class="font-extrabold text-lg">Pembuat Kuis</h1><p class="text-xs text-indigo-200">EduSmart LMS • Guru</p></div></div>
+  <div class="flex items-center gap-2"><span id="connection" class="px-3 py-1.5 rounded-full bg-white/15 text-xs font-semibold">Memeriksa koneksi...</span><span id="user-badge" class="hidden px-3 py-1.5 rounded-full bg-white/15 text-xs"></span></div>
+ </div>
+</header>
+<main class="max-w-7xl mx-auto p-4 sm:p-6">
+ <section id="login-panel" class="hidden max-w-md mx-auto mt-12 bg-white rounded-2xl shadow p-6">
+  <div class="text-center mb-5"><div class="mx-auto w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl"><i class="fa-solid fa-user-tie"></i></div><h2 class="text-xl font-extrabold mt-3">Masuk sebagai Guru</h2><p class="text-sm text-slate-500 mt-1">Gunakan akun Guru dari database EduSmart LMS.</p></div>
+  <form id="login-form" class="space-y-3"><input id="login-user" class="w-full border rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Username" required><input id="login-pass" type="password" class="w-full border rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Password" required><button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-3 font-bold">Masuk</button></form>
+ </section>
+ <section id="app" class="hidden space-y-5">
+  <div class="bg-white rounded-2xl shadow-sm border p-4 flex flex-wrap items-center justify-between gap-3">
+   <div><h2 class="font-extrabold text-xl">Kelola Kuis</h2><p class="text-sm text-slate-500">Buat kuis, atur soal pilihan ganda, dan siapkan untuk siswa.</p></div>
+   <div class="flex flex-wrap gap-2"><button onclick="openQuizForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm"><i class="fa-solid fa-plus mr-1"></i> Kuis Baru</button><button onclick="downloadTemplate()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm"><i class="fa-solid fa-file-excel mr-1"></i> Template Excel</button><label class="bg-slate-100 hover:bg-slate-200 px-4 py-2.5 rounded-xl font-bold text-sm cursor-pointer"><i class="fa-solid fa-upload mr-1"></i> Import Excel<input id="excel-input" type="file" accept=".xlsx,.xls,.csv" class="hidden"></label></div>
+  </div>
+  <div class="grid lg:grid-cols-12 gap-5">
+   <section class="lg:col-span-5 bg-white rounded-2xl shadow-sm border overflow-hidden"><div class="px-5 py-4 border-b flex items-center justify-between"><div><h3 class="font-bold">Daftar Kuis</h3><p id="quiz-count" class="text-xs text-slate-500">0 kuis</p></div><button onclick="loadData()" class="text-indigo-600 text-sm font-semibold"><i class="fa-solid fa-rotate"></i></button></div><div id="quiz-list" class="p-3 space-y-2 max-h-[65vh] overflow-y-auto scroll"></div></section>
+   <section class="lg:col-span-7 bg-white rounded-2xl shadow-sm border overflow-hidden"><div id="question-header" class="px-5 py-4 border-b"><div class="text-center text-slate-400 py-16"><i class="fa-solid fa-arrow-left text-2xl"></i><p class="mt-3 font-semibold">Pilih kuis untuk mengelola soal.</p></div></div><div id="question-area"></div></section>
+  </div>
+ </section>
+</main>
+<div id="modal" class="hidden fixed inset-0 z-50 modal items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto scroll"><div id="modal-body"></div></div></div>
+<template id="tpl-apps-script-code">
+// =================================================================
+// BACKEND GOOGLE APPS SCRIPT - SISTEM PEMBELAJARAN DIGITAL
+// =================================================================
+var REQUEST_SPREADSHEET_ID = '';
+
+function getRequestSpreadsheet_() {
+  return REQUEST_SPREADSHEET_ID ? SpreadsheetApp.openById(REQUEST_SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function hasHtmlFile_(name) {
+  try { DriveApp.getFilesByName(name + '.html'); return true; } catch (e) { return false; }
+}
+
+function doGet(e) {
+  e = e || { parameter: {} };
+  var params = e.parameter || {};
+  var action = params.action || '';
+
+  // API-first: GitHub Pages menggunakan endpoint ini. Tidak lagi bergantung pada index.html di Apps Script.
+  if (action) {
+    REQUEST_SPREADSHEET_ID = String(params.spreadsheetId || params.SPREADSHEET_ID || '').trim();
+    return handleRequest(action, params, params);
   }
-]
 
-Aturan:
-- PG: jawaban "A","B","C","D"
-- PGK: jawaban kombinasi "A;C"
-- MENJODOHKAN: kiri=[3 item], jawaban="B;A;C"
-- ISIAN: jawaban="kunci jawaban"
+  // Backward compatibility: bila file kuis masih berada di Apps Script, tetap bisa dibuka.
+  if (params.page === 'kuis') {
+    try {
+      return HtmlService.createHtmlOutputFromFile('kuis')
+        .setTitle('Kuis Interaktif - EduSmart LMS')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } catch (err) {
+      return jsonOutput_({success:false, message:'File kuis tidak ada di project Apps Script. Gunakan kuis.html dari GitHub Pages.', data:null});
+    }
+  }
 
-HANYA output JSON ARRAY, tanpa teks lain, tanpa markdown.`;
+  return jsonOutput_({
+    success: true,
+    message: 'EduSmart LMS API aktif. Gunakan parameter action untuk memanggil API.',
+    data: { service: 'EduSmart LMS Google Apps Script API', version: 'GitHub Pages API v1' }
+  });
+}
 
-                // ========== URL API ==========
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+function doPost(e) {
+  e = e || { parameter: {}, postData: { contents: '' } };
+  var params = e.parameter || {};
+  var body = {};
+  var raw = e.postData &amp;&amp; e.postData.contents ? String(e.postData.contents) : '';
+  if (raw) {
+    try { body = JSON.parse(raw); } catch (err) {
+      // GitHub Pages mengirim application/x-www-form-urlencoded agar request CORS tetap sederhana.
+      body = {};
+    }
+  }
+  // Form-urlencoded juga tersedia melalui e.parameter. Salin field JSON yang dikirim frontend.
+  Object.keys(params).forEach(function(k) {
+    if (body[k] === undefined) body[k] = params[k];
+  });
+  // Field kompleks dari GitHub Pages dikirim sebagai string JSON.
+  ['records', 'result', 'intent'].forEach(function(k) {
+    if (typeof body[k] === 'string') {
+      var rawValue = String(body[k]).trim();
+      if (rawValue &amp;&amp; (rawValue[0] === '[' || rawValue[0] === '{')) {
+        try { body[k] = JSON.parse(rawValue); } catch (ignore) {}
+      }
+    }
+  });
+  var action = params.action || body.action || '';
+  REQUEST_SPREADSHEET_ID = String(body.spreadsheetId || body.SPREADSHEET_ID || params.spreadsheetId || params.SPREADSHEET_ID || '').trim();
+  return handleRequest(action, params, body);
+}
 
-                // ========== PAYLOAD ==========
-                const payload = {
-                    contents: [{ 
-                        parts: [{ text: userPrompt }] 
-                    }],
-                    generationConfig: {
-                        temperature: 0.3,
-                        maxOutputTokens: 2048,
-                        topP: 0.95,
-                        topK: 40
-                    },
-                    systemInstruction: {
-                        parts: [{ text: systemPrompt }]
-                    }
-                };
+function handleRequest(action, params, body) {
+  action = String(action || (body &amp;&amp; body.action) || (params &amp;&amp; params.action) || '').trim();
+  params = params || {};
+  body = body || {};
+  if (!REQUEST_SPREADSHEET_ID) {
+    REQUEST_SPREADSHEET_ID = String(body.spreadsheetId || body.SPREADSHEET_ID || params.spreadsheetId || params.SPREADSHEET_ID || '').trim();
+  }
 
-                console.log('📤 Mengirim request ke Gemini...');
+  var result = { success: false, message: 'Action tidak dikenal: ' + action, data: null };
+  try {
+    var ss = getRequestSpreadsheet_();
+    if (action === 'health') {
+      result = { success: true, message: 'EduSmart LMS API aktif.', data: { service: 'Google Apps Script API', spreadsheetId: ss.getId(), title: ss.getName() } };
+    }
+    else if (action === 'testConnection') {
+      result = { success: true, message: 'Koneksi ke Google Spreadsheet Berhasil!', data: { title: ss.getName(), spreadsheetId: ss.getId() } };
+    }
+    else if (action === 'setupDatabase') result = setupDatabase();
+    else if (action === 'saveAppConfig') result = saveAppConfigToSheet(body || {});
+    else if (action === 'getAppConfig') result = { success: true, message: 'OK', data: getAppConfigFromSheet() };
+    else if (action === 'login') result = body &amp;&amp; body.spreadsheetId ? loginUserBySpreadsheetId(body.spreadsheetId, body.username, body.password, body.role) : loginUser(body.username, body.password, body.role);
+    else if (action === 'getGuruProfile') result = getGuruProfile(body || {});
+    else if (action === 'saveGuruProfile') result = saveGuruProfile(body || {});
+    else if (action === 'getMenuGuru') result = getMenuGuru(body || {});
+    else if (action === 'saveMenuGuru') result = saveMenuGuru(body || {});
+    else if (action === 'deleteMenuGuru') result = deleteMenuGuru(body || {});
+    else if (action === 'reorderMenuGuru') result = reorderMenuGuru(body || {});
+    else if (action === 'getStudents') result = getStudentsByClass((body &amp;&amp; body.kelas) || params.kelas || '');
+    else if (action === 'saveStudent') result = saveStudentAndCreateUser(body);
+    else if (action === 'importStudents') result = importStudentsAndCreateUsers(body.records || []);
+    else if (action === 'deleteStudent') result = deleteStudentAndUser(body.key);
+    else if (action === 'getSubjects') result = getSheetData('MasterMapel');
+    else if (action === 'saveSubject') result = addOrUpdateRow('MasterMapel', body, 'Kode');
+    else if (action === 'importSubjects') result = importRowsToSheet('MasterMapel', body.records || [], 'Kode');
+    else if (action === 'getAttendance') result = getSheetData('Absensi');
+    else if (action === 'saveAttendance') result = appendMultipleRows('Absensi', body.records);
+    else if (action === 'importAttendance') result = importRowsToSheet('Absensi', body.records || [], 'ID');
+    else if (action === 'getGrades') result = getSheetData('Nilai');
+    else if (action === 'saveGrade') result = saveGradeAndRebuildPenilaian(body || {});
+    else if (action === 'saveGradesBatch') result = saveGradesBatchAndRebuildPenilaian(body || {});
+    else if (action === 'importGrades') result = importGradesAndRebuild(body.records || []);
+    else if (action === 'getPenilaianConfig') result = getPenilaianConfig();
+    else if (action === 'savePenilaianConfig') result = savePenilaianConfig(body || {});
+    else if (action === 'deletePenilaianConfig') result = deletePenilaianConfig(body || {});
+    else if (action === 'rebuildPenilaianSheet') result = rebuildPenilaianSheet();
+    else if (action === 'getPenilaianSheet') result = getSheetData('Penilaian');
+    else if (action === 'getJournals') result = getSheetData('Jurnal');
+    else if (action === 'saveJournal') result = addOrUpdateRow('Jurnal', body, 'ID');
+    else if (action === 'importJournals') result = importRowsToSheet('Jurnal', body.records || [], 'ID');
+    else if (action === 'getQuizzes') result = getSheetData('Kuis');
+    else if (action === 'getQuizQuestions') result = getSheetData('SoalKuis');
+    else if (action === 'saveQuiz') result = saveQuizDefinition(body || {});
+    else if (action === 'deleteQuiz') result = deleteQuizDefinition(body || {});
+    else if (action === 'saveQuizQuestion') result = saveQuizQuestionDefinition(body || {});
+    else if (action === 'deleteQuizQuestion') result = deleteQuizQuestionDefinition(body || {});
+    else if (action === 'importQuizzes') result = importQuizDefinitions(body.records || [], body || {});
+    else if (action === 'importQuizQuestions') result = importQuizQuestionDefinitions(body.records || [], body || {});
+    else if (action === 'saveQuizResult') result = addOrUpdateRow('HasilKuis', body, 'ID');
+    else if (action === 'getQuizResults') result = getSheetData('HasilKuis');
+    else if (action === 'getAnnouncements') result = getSheetData('Pengumuman');
+    else if (action === 'saveAnnouncement') result = addOrUpdateRow('Pengumuman', body, 'ID');
+    else if (action === 'importAnnouncements') result = importRowsToSheet('Pengumuman', body.records || [], 'ID');
+    else if (action === 'getOpenAiStatus') result = getOpenAiStatus(body || {});
+    else if (action === 'saveOpenAiApiKey') result = saveOpenAiApiKey(body || {});
+    else if (action === 'haloHalo') result = haloHalo(body || {});
+    else if (action === 'haloHaloConfirm') result = haloHaloConfirm(body || {});
+    else if (action === 'syncOfflineData') result = syncOfflineData(body || {});
+    else if (action === 'resetDatabase') result = clearAllData();
+    else if (action === 'quizGetConfig') result = quizGetConfig(body.spreadsheetId || REQUEST_SPREADSHEET_ID);
+    else if (action === 'quizLogin') result = quizLogin(body.spreadsheetId || REQUEST_SPREADSHEET_ID, body.username, body.password);
+    else if (action === 'quizLoginByNis') result = quizLoginByNis(body.spreadsheetId || REQUEST_SPREADSHEET_ID, body.nis, body.kelas);
+    else if (action === 'getInteractiveQuizData') result = getInteractiveQuizData(body.spreadsheetId || REQUEST_SPREADSHEET_ID, body.nis, body.kelas);
+    else if (action === 'saveInteractiveQuizResult') result = saveInteractiveQuizResult(body.spreadsheetId || REQUEST_SPREADSHEET_ID, body.result);
+  } catch(err) {
+    result = { success: false, message: err &amp;&amp; err.message ? err.message : String(err), data: null };
+  }
+  return jsonOutput_(result);
+}
 
-                // ========== EKSEKUSI FETCH ==========
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+function jsonOutput_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj || {})).setMimeType(ContentService.MimeType.JSON);
+}
 
-                if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.error?.message || `HTTP ${response.status}`);
-                }
+function getDatabaseSchemas() {
+  return {
+    'Config': ['Key', 'Value', 'Description', 'UpdatedAt'],
+    'Users': ['ID', 'Username', 'Password', 'Nama', 'Role', 'NIS', 'NIP', 'Kelas', 'Status', 'CreatedAt', 'UpdatedAt'],
+    'Guru': ['NIP', 'Nama', 'Email', 'NoHP', 'MapelUtama'],
+    'Siswa': ['NIS', 'NISN', 'Nama', 'JenisKelamin', 'TempatLahir', 'TanggalLahir', 'Alamat', 'Kelas', 'NamaOrangTua', 'NoHP', 'Status'],
+    'MasterMapel': ['Kode', 'NamaMapel', 'Guru', 'Kelas', 'Status'],
+    'Absensi': ['ID', 'Tanggal', 'Kelas', 'KodeMapel', 'NIS', 'NamaSiswa', 'StatusHadir'],
+    'Nilai': ['ID', 'Kelas', 'KodeMapel', 'NIS', 'NamaSiswa', 'JenisPenilaian', 'Nilai', 'Tanggal'],
+    'PenilaianConfig': ['ID', 'KodeMapel', 'NamaMapel', 'Komponen', 'Urutan', 'Bobot', 'Status', 'CreatedAt', 'UpdatedAt'],
+    'Penilaian': ['NIS', 'NamaSiswa', 'Kelas'],
+    'Jurnal': ['ID', 'Tanggal', 'Kelas', 'KodeMapel', 'Materi', 'Kegiatan', 'Catatan'],
+    'Kuis': ['ID', 'Judul', 'KodeMapel', 'Kelas', 'JumlahSoal', 'DurasiMenit'],
+    'SoalKuis': ['ID', 'KuisID', 'Pertanyaan', 'OpsiA', 'OpsiB', 'OpsiC', 'OpsiD', 'KunciJawaban'],
+    'HasilKuis': ['ID', 'KuisID', 'NIS', 'NamaSiswa', 'Benar', 'Salah', 'Nilai', 'Tanggal'],
+    'Pengumuman': ['ID', 'Tanggal', 'Judul', 'Isi', 'TargetRole', 'TargetKelas', 'Pembuat'],
+    'Aktivitas': ['ID', 'Waktu', 'User', 'Aktivitas'],
+    'Game': ['ID', 'NamaGame', 'Pemain', 'Skor', 'Waktu'],
+    'MenuGuru': ['ID', 'NamaMenu', 'Ikon', 'Tipe', 'Target', 'TargetTab', 'Urutan', 'Status', 'CreatedAt', 'UpdatedAt']
+  };
+}
 
-                const result = await response.json();
-                console.log('📥 Response Gemini:', result);
+function ensureDatabaseSheets() {
+  var ss = getRequestSpreadsheet_();
+  var schemas = getDatabaseSchemas();
+  var created = [];
+  var repaired = [];
+  var sheetNames = Object.keys(schemas);
 
-                const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-                
-                if (!jsonText) {
-                    throw new Error('Tidak ada respons dari AI');
-                }
-
-                // ========== CLEAN & PARSE JSON ==========
-                let clean = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-                let match = clean.match(/\[[\s\S]*\]/);
-                if (!match) {
-                    throw new Error('Format JSON Array tidak ditemukan dalam respons');
-                }
-
-                const parsedQuestions = JSON.parse(match[0]);
-                
-                if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
-                    throw new Error('JSON bukan array atau kosong');
-                }
-
-                // ========== FORMAT ULANG ID ==========
-                let currentMaxId = questions.length > 0 ? Math.max(...questions.map(q => q.id)) : 0;
-                const cleanQuestions = parsedQuestions.map((q, idx) => {
-                    const kiriList = Array.isArray(q.kiri) && q.kiri.length >= 3 ? q.kiri : ['', '', ''];
-                    const jodohList = Array.isArray(q.jodohIndex) && q.jodohIndex.length >= 3 ? q.jodohIndex : ['A', 'B', 'C'];
-
-                    let jawaban = q.jawaban || '';
-                    if (q.tipe === 'MENJODOHKAN' && Array.isArray(jawaban)) {
-                        jawaban = jawaban.join(';');
-                    }
-
-                    return {
-                        id: currentMaxId + idx + 1,
-                        tipe: q.tipe || 'PG',
-                        pertanyaan: q.pertanyaan || '',
-                        pilihanA: q.pilihanA || '',
-                        pilihanB: q.pilihanB || '',
-                        pilihanC: q.pilihanC || '',
-                        pilihanD: q.pilihanD || '',
-                        jawaban: jawaban,
-                        kiri: kiriList,
-                        jodohIndex: jodohList
-                    };
-                });
-
-                // ========== TAMBAHKAN KE LIST SOAL ==========
-                questions = [...questions, ...cleanQuestions];
-                
-                // Bersihkan soal kosong default pertama jika masih ada
-                if (questions.length > 1 && questions[0].pertanyaan === "" && questions[0].pilihanA === "") {
-                    questions.shift();
-                }
-
-                renderQuestions();
-                updateCounter();
-                showToast(`✅ Berhasil merancang ${cleanQuestions.length} butir soal lewat AI!`, true);
-
-            } catch (err) {
-                console.error('❌ AI Error:', err);
-                showToast("❌ Gagal generate: " + err.message, false);
-            } finally {
-                loader.classList.add("hidden");
-                btn.disabled = false;
-                btn.innerHTML = `<i class="bi bi-cpu"></i> Generate Soal dengan AI`;
-            }
+  sheetNames.forEach(function(sheetName) {
+    var headers = schemas[sheetName];
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      created.push(sheetName);
+    } else if (sheet.getLastRow() === 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      repaired.push(sheetName);
+    } else {
+      var width = Math.max(sheet.getLastColumn(), headers.length);
+      var current = sheet.getRange(1, 1, 1, width).getValues()[0];
+      var mismatch = false;
+      for (var i = 0; i &lt; headers.length; i++) {
+        if (String(current[i] == null ? '' : current[i]).trim() !== headers[i]) {
+          mismatch = true;
+          break;
         }
+      }
+      if (mismatch &amp;&amp; sheet.getLastRow() &lt;= 1) {
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+        repaired.push(sheetName);
+      }
+    }
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e2e8f0');
+    if (sheet.getFrozenRows() &lt; 1) sheet.setFrozenRows(1);
+  });
 
-        // ============================================================
-        // DOWNLOAD EXCEL
-        // ============================================================
-        function downloadExcelQuiz() {
-            if (questions.length === 0) {
-                showToast("Tidak ada soal untuk di-download!", false);
-                return;
-            }
+  return { created: created, repaired: repaired, total: sheetNames.length, names: sheetNames };
+}
 
-            const startDate = document.getElementById('quiz_start_date').value.replace('T', ' ') || new Date().toLocaleString('id-ID');
-            const endDate = document.getElementById('quiz_end_date').value.replace('T', ' ') || new Date(Date.now() + 7*24*60*60*1000).toLocaleString('id-ID');
-            const duration = document.getElementById('quiz_duration').value || 30;
+function setupDatabase() {
+  var setupInfo = ensureDatabaseSheets();
+  ensureDefaultTeacherAccount();
+  syncAllStudentUsers();
+  saveAppConfigToSheet();
+  return {
+    success: true,
+    message: 'Semua sheet database berhasil dibuat/diperiksa. ' + setupInfo.total + ' sheet siap digunakan.',
+    data: { config: getAppConfigFromSheet(), sheets: setupInfo }
+  };
+}
 
-            const rows = questions.map((q, i) => {
-                let jawaban = q.jawaban || '';
-                if (q.tipe === 'MENJODOHKAN') {
-                    jawaban = q.jodohIndex.join(';');
-                }
-                return {
-                    "Waktu Mulai": i === 0 ? startDate : "",
-                    "Waktu Selesai": i === 0 ? endDate : "",
-                    "Durasi (Menit)": i === 0 ? duration : "",
-                    "Tipe": q.tipe || 'PG',
-                    "Pertanyaan": q.pertanyaan || '',
-                    "Pilihan A": q.pilihanA || '',
-                    "Pilihan B": q.pilihanB || '',
-                    "Pilihan C": q.pilihanC || '',
-                    "Pilihan D": q.pilihanD || '',
-                    "Jawaban": jawaban
-                };
-            });
+function saveAppConfigToSheet(input) {
+  var ss = getRequestSpreadsheet_();
+  ensureDatabaseSheets();
+  var sheet = ss.getSheetByName('Config');
+  if (!sheet) {
+    sheet = ss.insertSheet('Config');
+    sheet.appendRow(['Key', 'Value', 'Description', 'UpdatedAt']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#e2e8f0');
+  }
 
-            const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.json_to_sheet(rows);
-            XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-            XLSX.writeFile(wb, "kuis.xlsx");
-            showToast("✅ File 'kuis.xlsx' berhasil di-download!", true);
+  input = input || {};
+  var existingConfig = getAppConfigFromSheet();
+  var spreadsheetId = String(input.SPREADSHEET_ID || existingConfig.SPREADSHEET_ID || ss.getId()).trim();
+  var scriptUrl = String(input.APPSCRIPT_URL || input.WEB_APP_URL || existingConfig.APPSCRIPT_URL || '').trim();
+  var scriptId = String(existingConfig.SCRIPT_ID || '').trim();
+  try { scriptId = ScriptApp.getScriptId() || scriptId; } catch (e) {}
+  var now = new Date().toISOString();
+
+  var configRows = [
+    ['SPREADSHEET_ID', spreadsheetId, 'ID Spreadsheet database utama', now],
+    ['APPSCRIPT_URL', scriptUrl, 'URL Web App Google Apps Script (/exec)', now],
+    ['SCRIPT_ID', scriptId, 'ID project Google Apps Script', now],
+    ['DEFAULT_STUDENT_PASSWORD', '123456', 'Password default akun siswa otomatis', now],
+    ['GURU_USERNAME', String(input.GURU_USERNAME || existingConfig.GURU_USERNAME || 'guru').trim(), 'Username akun guru', now],
+    ['GURU_PASSWORD', String(input.GURU_PASSWORD || existingConfig.GURU_PASSWORD || '123456').trim(), 'Password akun guru', now],
+    ['GURU_NAMA', String(input.GURU_NAMA || existingConfig.GURU_NAMA || 'Guru').trim(), 'Nama guru', now],
+    ['GURU_KELAS', String(input.GURU_KELAS || existingConfig.GURU_KELAS || '').trim(), 'Kelas yang diampu guru', now],
+    ['UPDATED_AT', now, 'Waktu terakhir konfigurasi diperbarui', now]
+  ];
+
+  var values = sheet.getDataRange().getValues();
+  var keyIndex = 0;
+  var rowMap = {};
+  for (var i = 1; i &lt; values.length; i++) {
+    var key = String(values[i][keyIndex] == null ? '' : values[i][keyIndex]).trim();
+    if (key) rowMap[key] = i + 1;
+  }
+
+  configRows.forEach(function(row) {
+    if (rowMap[row[0]]) {
+      sheet.getRange(rowMap[row[0]], 1, 1, 4).setValues([row]);
+    } else {
+      sheet.appendRow(row);
+    }
+  });
+
+  return { success: true, message: 'Konfigurasi aplikasi berhasil disimpan.', data: getAppConfigFromSheet() };
+}
+
+function getAppConfigFromSheet() {
+  var ss = getRequestSpreadsheet_();
+  var sheet = ss.getSheetByName('Config');
+  if (!sheet || sheet.getLastRow() &lt; 2) {
+    return {
+      SPREADSHEET_ID: ss.getId(),
+      APPSCRIPT_URL: '',
+      SCRIPT_ID: '',
+      DEFAULT_STUDENT_PASSWORD: '123456',
+      UPDATED_AT: ''
+    };
+  }
+
+  var values = sheet.getDataRange().getValues();
+  var result = {};
+  for (var i = 1; i &lt; values.length; i++) {
+    var key = String(values[i][0] == null ? '' : values[i][0]).trim();
+    if (key) result[key] = values[i][1];
+  }
+  if (!result.SPREADSHEET_ID) result.SPREADSHEET_ID = ss.getId();
+  if (!result.DEFAULT_STUDENT_PASSWORD) result.DEFAULT_STUDENT_PASSWORD = '123456';
+  return result;
+}
+
+function getAppConfig(key) {
+  var config = getAppConfigFromSheet();
+  if (key) return config[key] !== undefined ? config[key] : '';
+  return config;
+}
+
+function ensureDefaultTeacherAccount() {
+  var ss = getRequestSpreadsheet_();
+  var sheet = ss.getSheetByName('Users');
+  if (!sheet) return;
+  var cfg = getAppConfigFromSheet();
+  var account = {
+    ID: 'USR-GURU-' + String(cfg.GURU_USERNAME || 'guru').toUpperCase(),
+    Username: String(cfg.GURU_USERNAME || 'guru').trim(),
+    Password: String(cfg.GURU_PASSWORD || '123456').trim(),
+    Nama: String(cfg.GURU_NAMA || 'Guru').trim(),
+    Role: 'guru',
+    NIS: '',
+    NIP: '',
+    Kelas: String(cfg.GURU_KELAS || '').trim(),
+    Status: 'aktif'
+  };
+  var headers = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
+  var values = sheet.getDataRange().getValues();
+  var u = headers.indexOf('Username');
+  var r = headers.indexOf('Role');
+  var found = -1;
+
+  for (var i = 1; i &lt; values.length; i++) {
+    var existingUsername = String(values[i][u] == null ? '' : values[i][u]).trim().toLowerCase();
+    var existingRole = String(values[i][r] == null ? '' : values[i][r]).trim().toLowerCase();
+    if (existingUsername === account.Username.toLowerCase() &amp;&amp; existingRole === 'guru') {
+      found = i + 1;
+      break;
+    }
+  }
+
+  var now = new Date().toISOString();
+  var row = headers.map(function(h) {
+    if (h === 'CreatedAt' || h === 'UpdatedAt') return now;
+    return account[h] !== undefined ? account[h] : '';
+  });
+
+  if (found &gt; 0) {
+    sheet.getRange(found, 1, 1, row.length).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+  }
+}
+
+function getStudentsByClass(kelas) {
+  var result=getSheetData('Siswa');
+  kelas=String(kelas||'').trim();
+  if(!kelas) return result;
+  result.data=(result.data||[]).filter(function(x){return String(x.Kelas||'').trim()===kelas;});
+  return result;
+}
+
+// Membuat / memperbarui akun login siswa berdasarkan data pada sheet Siswa.
+// Aturan wajib:
+//   NIS 1     -&gt; username siswa1
+//   NIS 2     -&gt; username siswa2
+//   password  -&gt; 123456
+//   role      -&gt; siswa
+function syncStudentToUser(student) {
+  var ss = getRequestSpreadsheet_();
+  var usersSheet = ss.getSheetByName('Users');
+  if (!usersSheet || !student) return false;
+
+  var nis = String(student.NIS == null ? '' : student.NIS).trim();
+  if (!nis) return false;
+
+  var headers = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+  var values = usersSheet.getDataRange().getValues();
+  var nisIndex = headers.indexOf('NIS');
+  var usernameIndex = headers.indexOf('Username');
+  var roleIndex = headers.indexOf('Role');
+  if (nisIndex === -1 || usernameIndex === -1 || roleIndex === -1) return false;
+
+  var username = 'siswa' + nis;
+  var found = -1;
+
+  for (var i = 1; i &lt; values.length; i++) {
+    var rowNis = String(values[i][nisIndex] == null ? '' : values[i][nisIndex]).trim();
+    var rowRole = String(values[i][roleIndex] == null ? '' : values[i][roleIndex]).trim().toLowerCase();
+    var rowUsername = String(values[i][usernameIndex] == null ? '' : values[i][usernameIndex]).trim().toLowerCase();
+
+    // Cari berdasarkan NIS + role terlebih dahulu. Ini juga memperbaiki akun lama
+    // seperti username "siswa" menjadi "siswa1001".
+    if ((rowNis === nis &amp;&amp; rowRole === 'siswa') || rowUsername === username.toLowerCase()) {
+      found = i + 1;
+      break;
+    }
+  }
+
+  var now = new Date().toISOString();
+  var account = {
+    ID: 'USR-SISWA-' + nis,
+    Username: username,
+    Password: '123456',
+    Nama: student.Nama || '',
+    Role: 'siswa',
+    NIS: nis,
+    NIP: '',
+    Kelas: student.Kelas || '',
+    Status: (String(student.Status || 'aktif').toLowerCase() === 'aktif') ? 'aktif' : 'nonaktif'
+  };
+
+  var row = headers.map(function(h) {
+    if (h === 'CreatedAt') {
+      if (found &gt; 0) {
+        var createdIdx = headers.indexOf('CreatedAt');
+        return createdIdx &gt;= 0 ? values[found - 1][createdIdx] : now;
+      }
+      return now;
+    }
+    if (h === 'UpdatedAt') return now;
+    return account[h] !== undefined ? account[h] : '';
+  });
+
+  if (found &gt; 0) {
+    usersSheet.getRange(found, 1, 1, headers.length).setValues([row]);
+  } else {
+    usersSheet.getRange(usersSheet.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
+  }
+  return true;
+}
+
+function syncAllStudentUsers() {
+  var students = getSheetData('Siswa').data || [];
+  for (var i = 0; i &lt; students.length; i++) {
+    syncStudentToUser(students[i]);
+  }
+}
+
+function saveStudentAndCreateUser(student) {
+  var result = addOrUpdateRow('Siswa', student, 'NIS');
+  if (!result.success) return result;
+  syncStudentToUser(student);
+  return {
+    success: true,
+    message: 'Data siswa berhasil disimpan dan akun login siswa otomatis dibuat/diperbarui.',
+    data: { username: 'siswa' + String(student.NIS).trim(), password: '123456', role: 'siswa' }
+  };
+}
+
+function importStudentsAndCreateUsers(records) {
+  var result = importRowsToSheet('Siswa', records, 'NIS');
+  if (!result.success) return result;
+
+  // Sinkronkan seluruh siswa agar data lama maupun hasil import memiliki akun.
+  syncAllStudentUsers();
+  result.message = 'Import siswa selesai dan akun login siswa otomatis disinkronkan.';
+  result.data.accountsSynced = (getSheetData('Siswa').data || []).length;
+  return result;
+}
+
+function deleteStudentAndUser(nis) {
+  var result = deleteRowByKey('Siswa', 'NIS', nis);
+  if (!result.success) return result;
+
+  var ss = getRequestSpreadsheet_();
+  var usersSheet = ss.getSheetByName('Users');
+  if (usersSheet &amp;&amp; usersSheet.getLastRow() &gt; 1) {
+    var values = usersSheet.getDataRange().getValues();
+    var headers = values[0];
+    var nisIndex = headers.indexOf('NIS');
+    var roleIndex = headers.indexOf('Role');
+    if (nisIndex &gt;= 0 &amp;&amp; roleIndex &gt;= 0) {
+      for (var i = values.length - 1; i &gt;= 1; i--) {
+        if (String(values[i][nisIndex]).trim() === String(nis).trim() &amp;&amp;
+            String(values[i][roleIndex]).trim().toLowerCase() === 'siswa') {
+          usersSheet.deleteRow(i + 1);
         }
+      }
+    }
+  }
+  return { success: true, message: 'Data siswa dan akun login siswa berhasil dihapus.', data: null };
+}
 
-        // ============================================================
-        // IMPORT EXCEL
-        // ============================================================
-        function importExistingExcel(e) {
-            const file = e.target.files[0];
-            if (!file) return;
+function loginUser(username, password, role) {
+  username = String(username == null ? '' : username).trim().toLowerCase();
+  password = String(password == null ? '' : password).trim();
+  role = String(role == null ? '' : role).trim().toLowerCase();
 
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                try {
-                    const data = new Uint8Array(event.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+  if (!username || !password || !role) {
+    return { success: false, message: 'Username, Password, dan Role wajib diisi!', data: null };
+  }
 
-                    if (jsonData.length === 0) {
-                        showToast("File Excel kosong!", false);
-                        return;
-                    }
+  if (role !== 'guru' &amp;&amp; role !== 'siswa') {
+    return { success: false, message: 'Role hanya boleh guru atau siswa!', data: null };
+  }
 
-                    const first = jsonData[0];
-                    if (first['Waktu Mulai']) {
-                        document.getElementById('quiz_start_date').value = first['Waktu Mulai'].replace(' ', 'T');
-                    }
-                    if (first['Waktu Selesai']) {
-                        document.getElementById('quiz_end_date').value = first['Waktu Selesai'].replace(' ', 'T');
-                    }
-                    if (first['Durasi (Menit)']) {
-                        document.getElementById('quiz_duration').value = first['Durasi (Menit)'];
-                    }
+  var users = getSheetData('Users').data || [];
+  for (var i = 0; i &lt; users.length; i++) {
+    var dbUsername = String(users[i].Username == null ? '' : users[i].Username).trim().toLowerCase();
+    var dbPassword = String(users[i].Password == null ? '' : users[i].Password).trim();
+    var dbRole = String(users[i].Role == null ? '' : users[i].Role).trim().toLowerCase();
 
-                    questions = jsonData.map((row, idx) => {
-                        let rawType = (row['Tipe'] || 'PG').toString().trim();
-                        let pertanyaan = row['Pertanyaan'] || '';
-                        let jawaban = (row['Jawaban'] || '').toString().trim();
-                        let kiri = ['', '', ''];
-                        let jodohIndex = ['A', 'B', 'C'];
-
-                        if (rawType === 'MENJODOHKAN') {
-                            const parts = pertanyaan.split(';');
-                            pertanyaan = parts[0] || '';
-                            kiri = [parts[1] || '', parts[2] || '', parts[3] || ''];
-                            const jodoh = jawaban.split(';');
-                            jodohIndex = [jodoh[0] || 'A', jodoh[1] || 'B', jodoh[2] || 'C'];
-                        }
-
-                        return {
-                            id: idx + 1,
-                            tipe: rawType,
-                            pertanyaan: pertanyaan,
-                            pilihanA: row['Pilihan A'] || '',
-                            pilihanB: row['Pilihan B'] || '',
-                            pilihanC: row['Pilihan C'] || '',
-                            pilihanD: row['Pilihan D'] || '',
-                            jawaban: jawaban,
-                            kiri: kiri,
-                            jodohIndex: jodohIndex
-                        };
-                    });
-
-                    renderQuestions();
-                    updateCounter();
-                    showToast(`✅ Berhasil mengimpor ${questions.length} soal!`, true);
-                } catch (err) {
-                    console.error(err);
-                    showToast("❌ Gagal mengimpor: " + err.message, false);
-                }
-            };
-            reader.readAsArrayBuffer(file);
-            e.target.value = '';
+    if (dbUsername === username &amp;&amp; dbPassword === password &amp;&amp; dbRole === role) {
+      if (users[i].Status !== 'aktif') {
+        return { success: false, message: 'Akun Anda sedang nonaktif.', data: null };
+      }
+      return {
+        success: true,
+        message: 'Login Berhasil',
+        data: {
+          ID: users[i].ID,
+          Username: users[i].Username,
+          Nama: users[i].Nama,
+          Role: users[i].Role,
+          NIS: users[i].NIS,
+          NIP: users[i].NIP,
+          Kelas: users[i].Kelas
         }
+      };
+    }
+  }
+  return { success: false, message: 'Username atau Password salah!', data: null };
+}
 
-        // ============================================================
-        // RESET SPREADSHEET - DIREKT KE APPS SCRIPT
-        // ============================================================
-        async function resetSpreadsheetDirect() {
-            if (isResetting) {
-                showToast('⏳ Proses reset sedang berjalan...', false);
-                return;
-            }
 
-            const spreadsheetId = getSpreadsheetIdFromDashboard();
+// ================================================================
+// PROFIL GURU
+// Data profil disimpan pada sheet Guru dan sinkron ke Users.
+// Foto guru TIDAK dikirim ke server; foto hanya disimpan di localStorage browser.
+// ================================================================
+function getGuruProfile(body) {
+  body = body || {};
+  var username = String(body.username || '').trim().toLowerCase();
+  var role = String(body.role || '').trim().toLowerCase();
+  var spreadsheetId = String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim();
+  if (role !== 'guru' || !username) {
+    return { success: false, message: 'Profil hanya dapat diakses oleh akun Guru.', data: null };
+  }
+  try {
+    var ss = getSpreadsheetById_(spreadsheetId);
+    var usersSheet = ss.getSheetByName('Users');
+    var guruSheet = ss.getSheetByName('Guru');
+    if (!usersSheet || !guruSheet) return { success:false, message:'Sheet Users atau Guru belum tersedia.', data:null };
 
-            if (!spreadsheetId) {
-                showToast('⚠️ SPREADSHEET_ID tidak ditemukan!', false);
-                showConfirm(
-                    '📋 Masukkan Spreadsheet ID secara manual:\n\n' +
-                    'Buka Google Sheets Anda, copy ID dari URL:\n' +
-                    'https://docs.google.com/spreadsheets/d/[ID_ANDI]/edit\n\n' +
-                    'Masukkan ID di bawah ini:',
-                    () => {
-                        const id = prompt('Masukkan Spreadsheet ID:');
-                        if (id && id.length > 10) {
-                            saveSpreadsheetId(id);
-                            document.getElementById('manual_spreadsheet_id').value = id;
-                            showToast('✅ Spreadsheet ID berhasil disimpan!', true);
-                            setTimeout(() => resetSpreadsheetDirect(), 500);
-                        }
-                    }
-                );
-                return;
-            }
+    var users = getSheetDataFromSpreadsheet_(ss, 'Users');
+    var user = users.filter(function(u) {
+      return String(u.Username || '').trim().toLowerCase() === username &amp;&amp; String(u.Role || '').trim().toLowerCase() === 'guru';
+    })[0];
+    if (!user) return { success:false, message:'Akun Guru tidak ditemukan.', data:null };
 
-            showConfirm(
-                '⚠️ PERINGATAN: Ini akan menghapus SEMUA data di sheet "Buat_Kuis"!\n\n' +
-                `📊 Spreadsheet ID: ${spreadsheetId.substring(0, 20)}...\n\n` +
-                'Apakah Anda yakin ingin melanjutkan?',
-                async () => {
-                    isResetting = true;
-                    const btn = document.getElementById('btn_reset');
-                    btn.disabled = true;
-                    btn.innerHTML = `<span class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span> Resetting...`;
+    var nip = String(user.NIP || '').trim();
+    var guruRows = getSheetDataFromSpreadsheet_(ss, 'Guru');
+    var guru = null;
+    if (nip) {
+      guru = guruRows.filter(function(g) { return String(g.NIP || '').trim() === nip; })[0] || null;
+    }
+    if (!guru) {
+      guru = guruRows.filter(function(g) {
+        return String(g.Nama || '').trim().toLowerCase() === String(user.Nama || '').trim().toLowerCase();
+      })[0] || null;
+    }
 
-                    try {
-                        let url = document.getElementById('script_url').value.trim() || 
-                                  localStorage.getItem('script_url') || '';
+    return { success:true, message:'Profil Guru berhasil dimuat.', data:{
+      Username: user.Username || username,
+      NIP: guru &amp;&amp; guru.NIP != null ? guru.NIP : (user.NIP || ''),
+      Nama: guru &amp;&amp; guru.Nama != null &amp;&amp; String(guru.Nama).trim() ? guru.Nama : (user.Nama || ''),
+      Email: guru &amp;&amp; guru.Email != null ? guru.Email : '',
+      NoHP: guru &amp;&amp; guru.NoHP != null ? guru.NoHP : '',
+      MapelUtama: guru &amp;&amp; guru.MapelUtama != null ? guru.MapelUtama : '',
+      Kelas: user.Kelas || ''
+    }};
+  } catch (e) {
+    return { success:false, message:'Gagal memuat profil Guru: ' + e.message, data:null };
+  }
+}
 
-                        if (!url) {
-                            showToast('⚠️ URL Apps Script tidak ditemukan!', false);
-                            isResetting = false;
-                            btn.disabled = false;
-                            btn.innerHTML = `<i class="bi bi-arrow-counterclockwise text-sm"></i> Reset`;
-                            return;
-                        }
+function setConfigValueInSpreadsheet_(ss, key, value, description) {
+  var sheet = ss.getSheetByName('Config');
+  if (!sheet) return;
+  var now = new Date().toISOString();
+  var values = sheet.getDataRange().getValues();
+  var found = -1;
+  for (var i = 1; i &lt; values.length; i++) {
+    if (String(values[i][0] || '').trim() === key) { found = i + 1; break; }
+  }
+  var row = [key, value, description || '', now];
+  if (found &gt; 0) sheet.getRange(found, 1, 1, 4).setValues([row]);
+  else sheet.appendRow(row);
+}
 
-                        showToast('⏳ Menghapus data dari Google Sheets...', true);
+function saveGuruProfile(body) {
+  body = body || {};
+  var username = String(body.username || '').trim().toLowerCase();
+  var role = String(body.role || '').trim().toLowerCase();
+  var spreadsheetId = String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim();
+  if (role !== 'guru' || !username) return { success:false, message:'Hanya akun Guru yang dapat mengubah profil.', data:null };
 
-                        let success = false;
-                        let errorMessages = [];
+  var nama = String(body.Nama || '').trim();
+  var nip = String(body.NIP || '').trim();
+  var email = String(body.Email || '').trim();
+  var noHp = String(body.NoHP || '').trim();
+  var mapelUtama = String(body.MapelUtama || '').trim();
+  var kelas = String(body.Kelas || '').trim();
+  if (!nama) return { success:false, message:'Nama Guru wajib diisi.', data:null };
 
-                        try {
-                            const resetPayload = {
-                                action: 'reset_sheet',
-                                sheet_name: 'Buat_Kuis'
-                            };
+  try {
+    var ss = getSpreadsheetById_(spreadsheetId);
+    ensureDatabaseSheetsForSpreadsheet_(ss);
 
-                            console.log('📤 Mengirim reset ke Apps Script:', resetPayload);
+    var usersSheet = ss.getSheetByName('Users');
+    var guruSheet = ss.getSheetByName('Guru');
+    var userValues = usersSheet.getDataRange().getValues();
+    var userHeaders = userValues[0];
+    var usernameIndex = userHeaders.indexOf('Username');
+    var roleIndex = userHeaders.indexOf('Role');
+    var foundUserRow = -1;
+    var oldNip = '';
+    for (var i = 1; i &lt; userValues.length; i++) {
+      if (String(userValues[i][usernameIndex] || '').trim().toLowerCase() === username &amp;&amp; String(userValues[i][roleIndex] || '').trim().toLowerCase() === 'guru') {
+        foundUserRow = i + 1;
+        var oldNipIndex = userHeaders.indexOf('NIP');
+        oldNip = oldNipIndex &gt;= 0 ? String(userValues[i][oldNipIndex] || '').trim() : '';
+        break;
+      }
+    }
+    if (foundUserRow &lt; 0) return { success:false, message:'Akun Guru tidak ditemukan di sheet Users.', data:null };
 
-                            await fetch(url, {
-                                method: 'POST',
-                                mode: 'no-cors',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(resetPayload)
-                            });
+    var now = new Date().toISOString();
+    var updatedUser = userValues[foundUserRow - 1].slice();
+    function putUser(field, value) {
+      var idx = userHeaders.indexOf(field);
+      if (idx &gt;= 0) updatedUser[idx] = value;
+    }
+    putUser('Nama', nama);
+    putUser('NIP', nip);
+    putUser('Kelas', kelas);
+    putUser('UpdatedAt', now);
+    usersSheet.getRange(foundUserRow, 1, 1, userHeaders.length).setValues([updatedUser]);
 
-                            success = true;
-                            console.log('✅ Reset request terkirim ke Apps Script');
-                            showToast('✅ Data berhasil direset!', true);
+    var guruValues = guruSheet.getDataRange().getValues();
+    var guruHeaders = guruValues[0];
+    var guruNipIndex = guruHeaders.indexOf('NIP');
+    var guruNameIndex = guruHeaders.indexOf('Nama');
+    var foundGuruRow = -1;
+    for (var j = 1; j &lt; guruValues.length; j++) {
+      var rowNip = guruNipIndex &gt;= 0 ? String(guruValues[j][guruNipIndex] || '').trim() : '';
+      var rowName = guruNameIndex &gt;= 0 ? String(guruValues[j][guruNameIndex] || '').trim().toLowerCase() : '';
+      if ((nip &amp;&amp; rowNip &amp;&amp; rowNip === nip) || (oldNip &amp;&amp; rowNip === oldNip) || (!oldNip &amp;&amp; rowName === String(body.oldNama || '').trim().toLowerCase())) {
+        foundGuruRow = j + 1;
+        break;
+      }
+    }
 
-                        } catch (e) {
-                            errorMessages.push(`Apps Script POST: ${e.message}`);
-                            console.warn('❌ Apps Script POST gagal:', e.message);
-                        }
+    var guruRecord = {NIP:nip, Nama:nama, Email:email, NoHP:noHp, MapelUtama:mapelUtama};
+    var guruRow = guruHeaders.map(function(h) { return guruRecord[h] !== undefined ? guruRecord[h] : ''; });
+    if (foundGuruRow &gt; 0) guruSheet.getRange(foundGuruRow, 1, 1, guruHeaders.length).setValues([guruRow]);
+    else guruSheet.appendRow(guruRow);
 
-                        if (!success) {
-                            try {
-                                const getUrl = url + '?action=reset_sheet';
-                                console.log('📤 Mencoba GET reset:', getUrl);
-                                
-                                await fetch(getUrl, {
-                                    method: 'GET',
-                                    mode: 'no-cors'
-                                });
-                                
-                                success = true;
-                                console.log('✅ GET reset request terkirim');
-                                showToast('✅ Data berhasil direset!', true);
-                                
-                            } catch (e) {
-                                errorMessages.push(`Apps Script GET: ${e.message}`);
-                                console.warn('❌ Apps Script GET gagal:', e.message);
-                            }
-                        }
+    // Sinkronkan nama/kelas pada Config agar setup berikutnya tidak mengembalikan profil lama.
+    setConfigValueInSpreadsheet_(ss, 'GURU_NAMA', nama, 'Nama guru');
+    setConfigValueInSpreadsheet_(ss, 'GURU_KELAS', kelas, 'Kelas yang diampu guru');
 
-                        if (!success) {
-                            console.error('❌ Semua metode reset gagal:', errorMessages);
-                            
-                            questions = [];
-                            addNewQuestion();
-                            renderQuestions();
-                            updateCounter();
+    return { success:true, message:'Profil Guru berhasil diperbarui dan disimpan ke sheet Guru.', data:{Username:username, NIP:nip, Nama:nama, Email:email, NoHP:noHp, MapelUtama:mapelUtama, Kelas:kelas} };
+  } catch (e) {
+    return { success:false, message:'Gagal menyimpan profil Guru: ' + e.message, data:null };
+  }
+}
 
-                            const manualLink = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-                            showToast('❌ Gagal reset otomatis. Buka spreadsheet manual.', false);
-                            
-                            setTimeout(() => {
-                                showConfirm(
-                                    `❌ Gagal reset otomatis!\n\n` +
-                                    `📊 Buka spreadsheet:\n${manualLink}\n\n` +
-                                    `🗑️ Hapus baris 2 sampai bawah di sheet "Buat_Kuis"\n\n` +
-                                    `🔑 Spreadsheet ID: ${spreadsheetId.substring(0, 20)}...\n\n` +
-                                    `⚠️ Error: ${errorMessages.join('; ')}`,
-                                    () => {
-                                        window.open(manualLink, '_blank');
-                                    }
-                                );
-                            }, 1000);
-                            return;
-                        }
 
-                        questions = [];
-                        addNewQuestion();
-                        renderQuestions();
-                        updateCounter();
+// ================================================================
+// MENU UTAMA GURU DINAMIS
+// ================================================================
+function isActiveGuru_(body) {
+  body = body || {};
+  var username = String(body.username || '').trim().toLowerCase();
+  var role = String(body.role || '').trim().toLowerCase();
+  if (role !== 'guru' || !username) return false;
+  var users = getSheetData('Users').data || [];
+  return users.some(function(u) {
+    return String(u.Username || '').trim().toLowerCase() === username &amp;&amp;
+           String(u.Role || '').trim().toLowerCase() === 'guru' &amp;&amp;
+           String(u.Status || '').trim().toLowerCase() === 'aktif';
+  });
+}
 
-                        showToast('✅ Data berhasil direset!', true);
+function normalizeMenuType_(value) {
+  return String(value || 'file').trim().toLowerCase() === 'link' ? 'link' : 'file';
+}
 
-                        setTimeout(async () => {
-                            try {
-                                const verifyResponse = await fetch(url + '?action=get_kuis');
-                                if (verifyResponse.ok) {
-                                    const result = await verifyResponse.json();
-                                    if (result.status === 'success' && result.data && result.data.length === 0) {
-                                        showToast('✅ Terverifikasi! Sheet sudah kosong.', true);
-                                    }
-                                }
-                            } catch (e) {
-                                console.log('Verifikasi tidak bisa dilakukan karena CORS');
-                            }
-                        }, 3000);
+function normalizeMenuTargetTab_(value) {
+  return String(value || 'same').trim().toLowerCase() === 'blank' ? 'blank' : 'same';
+}
 
-                    } catch (error) {
-                        console.error('❌ Error reset:', error);
-                        showToast('❌ Gagal reset: ' + error.message, false);
-                    } finally {
-                        isResetting = false;
-                        btn.disabled = false;
-                        btn.innerHTML = `<i class="bi bi-arrow-counterclockwise text-sm"></i> Reset`;
-                    }
-                }
-            );
+function normalizeMenuStatus_(value) {
+  return String(value || 'aktif').trim().toLowerCase() === 'nonaktif' ? 'nonaktif' : 'aktif';
+}
+
+function validateMenuTarget_(type, target) {
+  type = normalizeMenuType_(type);
+  target = String(target || '').trim();
+  if (!target) return 'Target file/link wajib diisi.';
+  if (/^\s*(javascript|data|vbscript):/i.test(target)) return 'Target tidak aman. Gunakan file lokal, http:// atau https://.';
+  if (type === 'link' &amp;&amp; !/^https?:\/\//i.test(target)) return 'Untuk tipe Link, URL harus diawali http:// atau https://.';
+  return '';
+}
+
+function getMenuGuru(body) {
+  body = body || {};
+  var ss = getSpreadsheetById_(String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim());
+  ensureDatabaseSheetsForSpreadsheet_(ss);
+  var rows = getSheetDataFromSpreadsheet_(ss, 'MenuGuru').map(function(m) {
+    return {
+      ID: String(m.ID || ''),
+      NamaMenu: String(m.NamaMenu || ''),
+      Ikon: String(m.Ikon || 'fa-solid fa-link'),
+      Tipe: normalizeMenuType_(m.Tipe),
+      Target: String(m.Target || ''),
+      TargetTab: normalizeMenuTargetTab_(m.TargetTab),
+      Urutan: Number(m.Urutan || 0),
+      Status: normalizeMenuStatus_(m.Status),
+      CreatedAt: m.CreatedAt || '',
+      UpdatedAt: m.UpdatedAt || ''
+    };
+  });
+  rows.sort(function(a,b) {
+    var ua = Number(a.Urutan || 0), ub = Number(b.Urutan || 0);
+    if (ua !== ub) return ua - ub;
+    return a.NamaMenu.localeCompare(b.NamaMenu, 'id');
+  });
+  var includeInactive = String(body.includeInactive || '').toLowerCase() === 'true' || body.includeInactive === true;
+  if (!includeInactive) rows = rows.filter(function(m) { return m.Status === 'aktif'; });
+  return {success:true, message:'Menu Guru berhasil dimuat.', data:rows};
+}
+
+function saveMenuGuru(body) {
+  body = body || {};
+  if (!isActiveGuru_(body)) return {success:false, message:'Hanya Guru aktif yang dapat mengatur Menu Utama.', data:null};
+  var ss = getSpreadsheetById_(String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim());
+  ensureDatabaseSheetsForSpreadsheet_(ss);
+  var sheet = ss.getSheetByName('MenuGuru');
+  var nama = String(body.NamaMenu || '').trim();
+  var ikon = String(body.Ikon || 'fa-solid fa-link').trim() || 'fa-solid fa-link';
+  var tipe = normalizeMenuType_(body.Tipe);
+  var target = String(body.Target || '').trim();
+  var targetTab = normalizeMenuTargetTab_(body.TargetTab);
+  var status = normalizeMenuStatus_(body.Status);
+  var id = String(body.ID || '').trim();
+
+  if (!nama) return {success:false, message:'Nama Menu wajib diisi.', data:null};
+  if (nama.length &gt; 50) return {success:false, message:'Nama Menu maksimal 50 karakter.', data:null};
+  var targetError = validateMenuTarget_(tipe, target);
+  if (targetError) return {success:false, message:targetError, data:null};
+
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var idIndex = headers.indexOf('ID');
+  var orderIndex = headers.indexOf('Urutan');
+  var createdIndex = headers.indexOf('CreatedAt');
+  var foundRow = -1;
+  var existingCreatedAt = '';
+  for (var i=1; i&lt;values.length; i++) {
+    if (id &amp;&amp; String(values[i][idIndex] || '').trim() === id) {
+      foundRow = i + 1;
+      existingCreatedAt = createdIndex &gt;= 0 ? values[i][createdIndex] : '';
+      break;
+    }
+  }
+  if (!id) id = 'MNU-' + Date.now() + '-' + Math.floor(Math.random()*1000);
+
+  var urutan = Number(body.Urutan);
+  if (!isFinite(urutan) || urutan &lt;= 0) {
+    var maxOrder = 0;
+    for (var j=1; j&lt;values.length; j++) maxOrder = Math.max(maxOrder, Number(values[j][orderIndex] || 0));
+    urutan = maxOrder + 1;
+  }
+
+  var now = new Date().toISOString();
+  var record = {
+    ID:id, NamaMenu:nama, Ikon:ikon, Tipe:tipe, Target:target,
+    TargetTab:targetTab, Urutan:urutan, Status:status,
+    CreatedAt:existingCreatedAt || now, UpdatedAt:now
+  };
+  var row = headers.map(function(h){ return record[h] !== undefined ? record[h] : ''; });
+  if (foundRow &gt; 0) sheet.getRange(foundRow,1,1,headers.length).setValues([row]);
+  else sheet.appendRow(row);
+  return {success:true, message:foundRow &gt; 0 ? 'Menu berhasil diperbarui.' : 'Menu berhasil ditambahkan.', data:record};
+}
+
+function deleteMenuGuru(body) {
+  body = body || {};
+  if (!isActiveGuru_(body)) return {success:false, message:'Hanya Guru aktif yang dapat menghapus Menu Utama.', data:null};
+  var ss = getSpreadsheetById_(String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim());
+  ensureDatabaseSheetsForSpreadsheet_(ss);
+  var id = String(body.ID || '').trim();
+  if (!id) return {success:false, message:'ID menu tidak ditemukan.', data:null};
+  var sheet = ss.getSheetByName('MenuGuru');
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0], idx = headers.indexOf('ID');
+  for (var i=1; i&lt;values.length; i++) {
+    if (String(values[i][idx] || '').trim() === id) {
+      sheet.deleteRow(i+1);
+      return {success:true, message:'Menu berhasil dihapus.', data:null};
+    }
+  }
+  return {success:false, message:'Menu tidak ditemukan.', data:null};
+}
+
+function reorderMenuGuru(body) {
+  body = body || {};
+  if (!isActiveGuru_(body)) return {success:false, message:'Hanya Guru aktif yang dapat mengatur urutan menu.', data:null};
+  var ss = getSpreadsheetById_(String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim());
+  ensureDatabaseSheetsForSpreadsheet_(ss);
+  var ids = body.ids || body.order || [];
+  if (typeof ids === 'string') {
+    try { ids = JSON.parse(ids); } catch(e) { ids = ids.split(','); }
+  }
+  if (!Array.isArray(ids) || !ids.length) return {success:false, message:'Urutan menu tidak valid.', data:null};
+
+  var sheet = ss.getSheetByName('MenuGuru');
+  var values = sheet.getDataRange().getValues(), headers = values[0];
+  var idIdx = headers.indexOf('ID'), orderIdx = headers.indexOf('Urutan'), updatedIdx = headers.indexOf('UpdatedAt');
+  var rowMap = {};
+  for (var i=1; i&lt;values.length; i++) rowMap[String(values[i][idIdx] || '').trim()] = i+1;
+  var now = new Date().toISOString(), updated = 0;
+  ids.forEach(function(id, index) {
+    id = String(id || '').trim();
+    if (rowMap[id]) {
+      sheet.getRange(rowMap[id], orderIdx+1).setValue(index+1);
+      if (updatedIdx &gt;= 0) sheet.getRange(rowMap[id], updatedIdx+1).setValue(now);
+      updated++;
+    }
+  });
+  return {success:true, message:'Urutan Menu Utama berhasil disimpan.', data:{updated:updated}};
+}
+
+function ensureDatabaseSheetsForSpreadsheet_(ss) {
+  var schemas = getDatabaseSchemas();
+  Object.keys(schemas).forEach(function(sheetName) {
+    var headers = schemas[sheetName];
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#e2e8f0');
+      sheet.setFrozenRows(1);
+    }
+  });
+}
+
+function getQuizPageUrl() {
+  return ScriptApp.getService().getUrl() + '?page=kuis';
+}
+
+function googleRpc(action, params, body) {
+  params = params || {};
+  body = body || {};
+  var output = handleRequest(action, params, body);
+  try {
+    return JSON.parse(output.getContent());
+  } catch (e) {
+    return { success: false, message: String(e), data: null };
+  }
+}
+
+function getSpreadsheetById_(spreadsheetId) {
+  var id = String(spreadsheetId == null ? '' : spreadsheetId).trim();
+  if (!id) return getRequestSpreadsheet_();
+  return SpreadsheetApp.openById(id);
+}
+
+function getSheetDataFromSpreadsheet_(ss, sheetName) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return [];
+  var values = sheet.getDataRange().getValues();
+  if (values.length &lt;= 1) return [];
+  var headers = values[0];
+  return values.slice(1).map(function(row) {
+    var obj = {};
+    headers.forEach(function(h, i) { obj[h] = row[i]; });
+    return obj;
+  });
+}
+
+function getConfigFromSpreadsheet_(ss) {
+  var sheet = ss.getSheetByName('Config');
+  var result = {};
+  if (!sheet || sheet.getLastRow() &lt; 2) return result;
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i &lt; values.length; i++) {
+    var key = String(values[i][0] == null ? '' : values[i][0]).trim();
+    if (key) result[key] = values[i][1];
+  }
+  return result;
+}
+
+function loginUserBySpreadsheetId(spreadsheetId, username, password, role) {
+  username = String(username == null ? '' : username).trim().toLowerCase();
+  password = String(password == null ? '' : password).trim();
+  role = String(role == null ? '' : role).trim().toLowerCase();
+  spreadsheetId = String(spreadsheetId == null ? '' : spreadsheetId).trim();
+  if (!spreadsheetId || !username || !password || !role) {
+    return { success: false, message: 'Kode database, Username, Password, dan Role wajib diisi!', data: null };
+  }
+  if (role !== 'guru' &amp;&amp; role !== 'siswa') {
+    return { success: false, message: 'Role hanya boleh guru atau siswa!', data: null };
+  }
+  try {
+    var ss = getSpreadsheetById_(spreadsheetId);
+    var config = getConfigFromSpreadsheet_(ss);
+    var users = getSheetDataFromSpreadsheet_(ss, 'Users');
+    if (!users.length) return { success: false, message: 'Sheet Users belum tersedia pada database ini.', data: null };
+    for (var i = 0; i &lt; users.length; i++) {
+      var u = users[i];
+      if (String(u.Username == null ? '' : u.Username).trim().toLowerCase() === username &amp;&amp;
+          String(u.Password == null ? '' : u.Password).trim() === password &amp;&amp;
+          String(u.Role == null ? '' : u.Role).trim().toLowerCase() === role) {
+        if (String(u.Status || '').toLowerCase() !== 'aktif') return { success: false, message: 'Akun Anda sedang nonaktif.', data: null };
+        return { success: true, message: 'Login Berhasil', data: {
+          ID: u.ID, Username: u.Username, Nama: u.Nama, Role: u.Role, NIS: u.NIS, NIP: u.NIP, Kelas: u.Kelas,
+          SPREADSHEET_ID: spreadsheetId, DatabaseNama: ss.getName(), DatabaseConfig: config
+        }};
+      }
+    }
+    return { success: false, message: 'Username atau Password salah!', data: null };
+  } catch (e) {
+    return { success: false, message: 'Database tidak dapat dibuka. Periksa kembali Kode dari Guru.', data: null };
+  }
+}
+
+function quizGetConfig(spreadsheetId) {
+  try {
+    var ss = getSpreadsheetById_(spreadsheetId);
+    var cfg = getConfigFromSpreadsheet_(ss);
+    return { success: true, message: 'Database ditemukan.', data: {
+      SPREADSHEET_ID: ss.getId(), NamaDatabase: ss.getName(),
+      GURU_NAMA: cfg.GURU_NAMA || '', GURU_KELAS: cfg.GURU_KELAS || '',
+      DEFAULT_STUDENT_PASSWORD: cfg.DEFAULT_STUDENT_PASSWORD || '123456'
+    }};
+  } catch (e) {
+    return { success: false, message: 'Kode database tidak valid atau database tidak dapat diakses.', data: null };
+  }
+}
+
+function quizLogin(spreadsheetId, username, password) {
+  return loginUserBySpreadsheetId(spreadsheetId, username, password, 'siswa');
+}
+
+// Login kuis berbasis NIS dari sesi dashboard siswa. Nama/kelas diambil ulang
+// dari database sehingga query URL tidak menjadi sumber identitas yang dipercaya.
+function quizLoginByNis(spreadsheetId, nis, kelas) {
+  try {
+    var ss = getSpreadsheetById_(spreadsheetId);
+    var siswa = getSheetDataFromSpreadsheet_(ss, 'Siswa');
+    var wantedNis = String(nis == null ? '' : nis).trim();
+    var wantedClass = String(kelas == null ? '' : kelas).trim();
+    if (!wantedNis) return { success: false, message: 'NIS siswa tidak ditemukan pada sesi.', data: null };
+    for (var i = 0; i &lt; siswa.length; i++) {
+      var s = siswa[i];
+      if (String(s.NIS == null ? '' : s.NIS).trim() === wantedNis) {
+        if (String(s.Status || '').trim().toLowerCase() !== 'aktif') return { success: false, message: 'Akun siswa sedang nonaktif.', data: null };
+        if (wantedClass &amp;&amp; String(s.Kelas == null ? '' : s.Kelas).trim() !== wantedClass) return { success: false, message: 'Kelas siswa tidak sesuai dengan sesi aplikasi utama.', data: null };
+        return { success: true, message: 'Siswa terverifikasi.', data: {
+          NIS: s.NIS, Nama: s.Nama, Username: s.Nama, Role: 'siswa', Kelas: s.Kelas,
+          SPREADSHEET_ID: ss.getId(), DatabaseNama: ss.getName()
+        }};
+      }
+    }
+    return { success: false, message: 'NIS siswa tidak ditemukan pada database.', data: null };
+  } catch (e) {
+    return { success: false, message: 'Database tidak dapat dibuka. Periksa konfigurasi aplikasi.', data: null };
+  }
+}
+
+function getInteractiveQuizData(spreadsheetId, nis, kelas) {
+  try {
+    var ss = getSpreadsheetById_(spreadsheetId);
+    var quizzes = getSheetDataFromSpreadsheet_(ss, 'Kuis');
+    var questions = getSheetDataFromSpreadsheet_(ss, 'SoalKuis');
+    var wantedClass = String(kelas == null ? '' : kelas).trim();
+    var visibleQuizzes = quizzes.filter(function(q) {
+      return !wantedClass || String(q.Kelas == null ? '' : q.Kelas).trim() === wantedClass || String(q.Kelas == null ? '' : q.Kelas).trim().toLowerCase() === 'semua';
+    });
+    var ids = {};
+    visibleQuizzes.forEach(function(q) { ids[String(q.ID)] = true; });
+    var visibleQuestions = questions.filter(function(q) { return ids[String(q.KuisID)]; });
+    return { success: true, message: 'Data kuis berhasil dimuat.', data: { quizzes: visibleQuizzes, questions: visibleQuestions } };
+  } catch (e) {
+    return { success: false, message: String(e), data: null };
+  }
+}
+
+function isActiveGuruForQuiz_(body) {
+  body = body || {};
+  return isActiveGuru_(body);
+}
+
+function saveQuizDefinition(body) {
+  body = body || {};
+  if (!isActiveGuruForQuiz_(body)) return {success:false, message:'Hanya Guru aktif yang dapat membuat atau mengubah kuis.', data:null};
+  var id = String(body.ID || '').trim() || ('KUIS-' + Date.now() + '-' + Math.floor(Math.random()*1000));
+  var judul = String(body.Judul || '').trim();
+  var kodeMapel = String(body.KodeMapel || '').trim();
+  var kelas = String(body.Kelas || '').trim();
+  var jumlah = Number(body.JumlahSoal || 0);
+  var durasi = Number(body.DurasiMenit || 0);
+  if (!judul) return {success:false, message:'Judul kuis wajib diisi.', data:null};
+  if (!kelas) return {success:false, message:'Kelas wajib diisi.', data:null};
+  if (!jumlah || jumlah &lt; 1) return {success:false, message:'Jumlah soal minimal 1.', data:null};
+  if (!durasi || durasi &lt; 1) return {success:false, message:'Durasi kuis minimal 1 menit.', data:null};
+  var record = {ID:id, Judul:judul, KodeMapel:kodeMapel, Kelas:kelas, JumlahSoal:jumlah, DurasiMenit:durasi};
+  var result = addOrUpdateRow('Kuis', record, 'ID');
+  if (result.success) result.data = record;
+  return result;
+}
+
+function deleteQuizDefinition(body) {
+  body = body || {};
+  if (!isActiveGuruForQuiz_(body)) return {success:false, message:'Hanya Guru aktif yang dapat menghapus kuis.', data:null};
+  var id = String(body.ID || '').trim();
+  if (!id) return {success:false, message:'ID kuis tidak ditemukan.', data:null};
+  var ss = getRequestSpreadsheet_();
+  var qSheet = ss.getSheetByName('SoalKuis');
+  if (qSheet &amp;&amp; qSheet.getLastRow() &gt; 1) {
+    var vals = qSheet.getDataRange().getValues();
+    var headers = vals[0], idx = headers.indexOf('KuisID');
+    if (idx &gt;= 0) {
+      for (var i = vals.length - 1; i &gt;= 1; i--) {
+        if (String(vals[i][idx] || '').trim() === id) qSheet.deleteRow(i + 1);
+      }
+    }
+  }
+  var result = deleteRowByKey('Kuis', 'ID', id);
+  if (result.success) result.message = 'Kuis dan seluruh soalnya berhasil dihapus.';
+  return result;
+}
+
+function saveQuizQuestionDefinition(body) {
+  body = body || {};
+  if (!isActiveGuruForQuiz_(body)) return {success:false, message:'Hanya Guru aktif yang dapat mengatur soal kuis.', data:null};
+  var id = String(body.ID || '').trim() || ('SOAL-' + Date.now() + '-' + Math.floor(Math.random()*1000));
+  var kuisId = String(body.KuisID || '').trim();
+  var pertanyaan = String(body.Pertanyaan || '').trim();
+  var a = String(body.OpsiA || '').trim(), b = String(body.OpsiB || '').trim(), c = String(body.OpsiC || '').trim(), d = String(body.OpsiD || '').trim();
+  var kunci = String(body.KunciJawaban || '').trim().toUpperCase();
+  if (!kuisId) return {success:false, message:'KuisID wajib diisi.', data:null};
+  if (!pertanyaan) return {success:false, message:'Pertanyaan wajib diisi.', data:null};
+  if (!a || !b || !c || !d) return {success:false, message:'Semua opsi A-D wajib diisi.', data:null};
+  if (!['A','B','C','D'].includes(kunci)) return {success:false, message:'Kunci jawaban harus A, B, C, atau D.', data:null};
+  var record = {ID:id, KuisID:kuisId, Pertanyaan:pertanyaan, OpsiA:a, OpsiB:b, OpsiC:c, OpsiD:d, KunciJawaban:kunci};
+  var result = addOrUpdateRow('SoalKuis', record, 'ID');
+  if (result.success) result.data = record;
+  return result;
+}
+
+function deleteQuizQuestionDefinition(body) {
+  body = body || {};
+  if (!isActiveGuruForQuiz_(body)) return {success:false, message:'Hanya Guru aktif yang dapat menghapus soal.', data:null};
+  var id = String(body.ID || '').trim();
+  if (!id) return {success:false, message:'ID soal tidak ditemukan.', data:null};
+  return deleteRowByKey('SoalKuis', 'ID', id);
+}
+
+function importQuizDefinitions(records, body) {
+  body = body || {};
+  if (!isActiveGuruForQuiz_(body)) return {success:false, message:'Hanya Guru aktif yang dapat mengimport kuis.', data:null};
+  records = Array.isArray(records) ? records : [];
+  records = records.map(function(r){
+    r = r || {};
+    return {ID:String(r.ID || '').trim() || ('KUIS-' + Date.now() + '-' + Math.floor(Math.random()*100000)), Judul:String(r.Judul || '').trim(), KodeMapel:String(r.KodeMapel || '').trim(), Kelas:String(r.Kelas || '').trim(), JumlahSoal:Number(r.JumlahSoal || 0), DurasiMenit:Number(r.DurasiMenit || 0)};
+  }).filter(function(r){ return r.Judul &amp;&amp; r.Kelas &amp;&amp; r.JumlahSoal &gt; 0 &amp;&amp; r.DurasiMenit &gt; 0; });
+  if (!records.length) return {success:false, message:'Tidak ada data kuis valid untuk diimport.', data:null};
+  return importRowsToSheet('Kuis', records, 'ID');
+}
+
+function importQuizQuestionDefinitions(records, body) {
+  body = body || {};
+  if (!isActiveGuruForQuiz_(body)) return {success:false, message:'Hanya Guru aktif yang dapat mengimport soal.', data:null};
+  records = Array.isArray(records) ? records : [];
+  records = records.map(function(r){
+    r = r || {};
+    return {ID:String(r.ID || '').trim() || ('SOAL-' + Date.now() + '-' + Math.floor(Math.random()*100000)), KuisID:String(r.KuisID || '').trim(), Pertanyaan:String(r.Pertanyaan || '').trim(), OpsiA:String(r.OpsiA || '').trim(), OpsiB:String(r.OpsiB || '').trim(), OpsiC:String(r.OpsiC || '').trim(), OpsiD:String(r.OpsiD || '').trim(), KunciJawaban:String(r.KunciJawaban || '').trim().toUpperCase()};
+  }).filter(function(r){ return r.KuisID &amp;&amp; r.Pertanyaan &amp;&amp; r.OpsiA &amp;&amp; r.OpsiB &amp;&amp; r.OpsiC &amp;&amp; r.OpsiD &amp;&amp; ['A','B','C','D'].includes(r.KunciJawaban); });
+  if (!records.length) return {success:false, message:'Tidak ada soal valid untuk diimport.', data:null};
+  return importRowsToSheet('SoalKuis', records, 'ID');
+}
+
+function saveInteractiveQuizResult(spreadsheetId, result) {
+  try {
+    var ss = getSpreadsheetById_(spreadsheetId);
+    var sheet = ss.getSheetByName('HasilKuis');
+    if (!sheet) return { success: false, message: 'Sheet HasilKuis belum tersedia.' };
+    var students = getSheetDataFromSpreadsheet_(ss, 'Siswa');
+    var verified = null;
+    var resultNis = String(result &amp;&amp; result.NIS == null ? '' : (result &amp;&amp; result.NIS || '')).trim();
+    for (var i = 0; i &lt; students.length; i++) {
+      if (String(students[i].NIS == null ? '' : students[i].NIS).trim() === resultNis) { verified = students[i]; break; }
+    }
+    if (!verified) return { success: false, message: 'Siswa tidak terverifikasi. Hasil kuis tidak disimpan.', data: null };
+    result = Object.assign({}, result, { NIS: verified.NIS, NamaSiswa: verified.Nama });
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var row = headers.map(function(h) { return result[h] !== undefined ? result[h] : ''; });
+    sheet.appendRow(row);
+    return { success: true, message: 'Hasil kuis berhasil disimpan.', data: result };
+  } catch (e) {
+    return { success: false, message: String(e), data: null };
+  }
+}
+
+function importGradesAndRebuild(records) {
+  var result = importRowsToSheet('Nilai', records || [], 'ID');
+  if (!result.success) return result;
+  return { success:true, message:'Import nilai selesai dan tabel Penilaian diperbarui.', data:{import:result.data, rebuild:rebuildPenilaianSheet()} };
+}
+
+function getPenilaianConfig() {
+  var sheet = getRequestSpreadsheet_().getSheetByName('PenilaianConfig');
+  if (!sheet) return { success: true, message: 'Konfigurasi penilaian kosong', data: [] };
+  var rows = getSheetData('PenilaianConfig').data || [];
+  if (!rows.length) {
+    var grades = getSheetData('Nilai').data || [];
+    var subjects = getSheetData('MasterMapel').data || [];
+    var subjectMap = {};
+    subjects.forEach(function(s){ subjectMap[String(s.Kode)] = s; });
+    var seen = {}, seed = [];
+    grades.forEach(function(g){
+      var kode = String(g.KodeMapel || '').trim();
+      var komponen = String(g.JenisPenilaian || '').trim();
+      if (!kode || !komponen) return;
+      var key = kode + '|' + komponen.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      var sub = subjectMap[kode] || {};
+      seed.push({ ID:'PC-' + Date.now() + '-' + seed.length, KodeMapel:kode, NamaMapel:sub.NamaMapel || kode, Komponen:komponen, Urutan:seed.filter(function(x){return x.KodeMapel===kode;}).length + 1, Bobot:0, Status:'aktif', CreatedAt:new Date(), UpdatedAt:new Date() });
+    });
+    if (seed.length) { importRowsToSheet('PenilaianConfig', seed, 'ID'); rows = seed; }
+  }
+  rows.sort(function(a,b){ var sa=String(a.KodeMapel||''), sb=String(b.KodeMapel||''); return sa===sb ? Number(a.Urutan||0)-Number(b.Urutan||0) : sa.localeCompare(sb); });
+  return { success:true, message:'Konfigurasi penilaian siap.', data:rows };
+}
+
+function savePenilaianConfig(body) {
+  body=body||{};
+  var kode=String(body.KodeMapel||'').trim(), komponen=String(body.Komponen||'').trim();
+  if(!kode || !komponen) return {success:false,message:'Mapel dan nama komponen penilaian wajib diisi.',data:null};
+  var subjects=getSheetData('MasterMapel').data||[];
+  var subject=subjects.find(function(s){return String(s.Kode)===kode;});
+  if(!subject) return {success:false,message:'Mata pelajaran tidak ditemukan.',data:null};
+  var existing=getPenilaianConfig().data||[];
+  var dup=existing.find(function(x){return String(x.KodeMapel)===kode &amp;&amp; String(x.Komponen).trim().toLowerCase()===komponen.toLowerCase() &amp;&amp; String(x.ID)!==String(body.ID||'');});
+  if(dup) return {success:false,message:'Komponen penilaian tersebut sudah ada untuk mapel ini.',data:null};
+  var maxOrder=0;
+  existing.filter(function(x){return String(x.KodeMapel)===kode;}).forEach(function(x){maxOrder=Math.max(maxOrder,Number(x.Urutan||0));});
+  var now=new Date();
+  var payload={ID:String(body.ID||('PC-'+Date.now())),KodeMapel:kode,NamaMapel:subject.NamaMapel||kode,Komponen:komponen,Urutan:Number(body.Urutan||maxOrder+1),Bobot:Number(body.Bobot||0),Status:String(body.Status||'aktif'),CreatedAt:body.CreatedAt||now,UpdatedAt:now};
+  var saved=addOrUpdateRow('PenilaianConfig',payload,'ID');
+  if(!saved.success) return saved;
+  var rebuilt=rebuildPenilaianSheet();
+  return {success:true,message:'Komponen penilaian berhasil disimpan.',data:{config:payload,rebuild:rebuilt}};
+}
+
+function deletePenilaianConfig(body) {
+  body=body||{}; var id=String(body.ID||'').trim();
+  if(!id) return {success:false,message:'ID komponen tidak valid.',data:null};
+  var result=deleteRowByKey('PenilaianConfig','ID',id); if(!result.success) return result;
+  return {success:true,message:'Komponen penilaian dihapus.',data:{rebuild:rebuildPenilaianSheet()}};
+}
+
+function saveGradeAndRebuildPenilaian(body) {
+  body=body||{}; var nilai=Number(body.Nilai);
+  if(isNaN(nilai)||nilai&lt;0||nilai&gt;100) return {success:false,message:'Nilai harus berupa angka 0 sampai 100.',data:null};
+  var result=addOrUpdateRow('Nilai',body,'ID'); if(!result.success) return result;
+  return {success:true,message:'Nilai berhasil disimpan dan tabel Penilaian diperbarui.',data:{rebuild:rebuildPenilaianSheet()}};
+}
+
+function saveGradesBatchAndRebuildPenilaian(body) {
+  body = body || {};
+  var records = body.records || body.nilai || [];
+  if (typeof records === 'string') {
+    try { records = JSON.parse(records); } catch (e) { records = []; }
+  }
+  if (!Array.isArray(records) || !records.length) {
+    return {success:false,message:'Tidak ada nilai yang perlu disimpan.',data:{saved:0}};
+  }
+
+  var ss = getRequestSpreadsheet_();
+  var sheet = ss.getSheetByName('Nilai');
+  if (!sheet) {
+    return {success:false,message:'Sheet Nilai tidak ditemukan.',data:null};
+  }
+
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0] || [];
+  var idIdx = headers.indexOf('ID');
+  if (idIdx &lt; 0) {
+    return {success:false,message:'Kolom ID pada sheet Nilai tidak ditemukan.',data:null};
+  }
+
+  var rowMap = {};
+  for (var i=1; i&lt;values.length; i++) {
+    var existingId = String(values[i][idIdx] == null ? '' : values[i][idIdx]).trim();
+    if (existingId) rowMap[existingId] = i;
+  }
+
+  var nowDate = new Date();
+  var updated = 0;
+  var inserted = 0;
+  var invalid = [];
+  var appendRows = [];
+
+  records.forEach(function(record, index) {
+    record = record || {};
+    var nilai = Number(record.Nilai);
+
+    if (isNaN(nilai) || nilai &lt; 0 || nilai &gt; 100) {
+      invalid.push(index + 1);
+      return;
+    }
+
+    record.ID = String(record.ID || ('NIL-' + Date.now() + '-' + index)).trim();
+    if (!record.Tanggal) record.Tanggal = nowDate;
+
+    var rowData = headers.map(function(h) {
+      return record[h] !== undefined ? record[h] : '';
+    });
+
+    if (rowMap[record.ID] !== undefined) {
+      values[rowMap[record.ID]] = rowData;
+      updated++;
+    } else {
+      appendRows.push(rowData);
+      inserted++;
+    }
+  });
+
+  if (values.length &gt; 1) {
+    sheet.getRange(2, 1, values.length - 1, headers.length)
+      .setValues(values.slice(1));
+  }
+
+  if (appendRows.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length)
+      .setValues(appendRows);
+  }
+
+  var rebuilt = rebuildPenilaianSheet();
+
+  return {
+    success: invalid.length === 0,
+    message: invalid.length
+      ? ('Sebagian nilai gagal disimpan. Baris tidak valid: ' + invalid.join(', ') + '.')
+      : ('Sebanyak ' + (updated + inserted) + ' nilai berhasil disimpan sekaligus.'),
+    data: {
+      saved: updated + inserted,
+      updated: updated,
+      inserted: inserted,
+      invalid: invalid,
+      rebuild: rebuilt
+    }
+  };
+}
+
+function rebuildPenilaianSheet() {
+  var ss=getRequestSpreadsheet_();
+  var sheet=ss.getSheetByName('Penilaian')||ss.insertSheet('Penilaian');
+  var subjects=(getSheetData('MasterMapel').data||[]).filter(function(s){return String(s.Status||'aktif').toLowerCase()!=='nonaktif';});
+  var configs=(getPenilaianConfig().data||[]).filter(function(c){return String(c.Status||'aktif').toLowerCase()!=='nonaktif';});
+  var students=getSheetData('Siswa').data||[], grades=getSheetData('Nilai').data||[];
+  var headers=['NIS','NamaSiswa','Kelas'], columns=[];
+  subjects.forEach(function(sub){
+    var kode=String(sub.Kode||'').trim();
+    configs.filter(function(c){return String(c.KodeMapel||'')===kode;}).sort(function(a,b){return Number(a.Urutan||0)-Number(b.Urutan||0);}).forEach(function(c){
+      var komponen=String(c.Komponen||'').trim(), key=kode+'::'+komponen;
+      headers.push(key); columns.push({key:key,kode:kode,komponen:komponen});
+    });
+  });
+  if(sheet.getMaxColumns()&lt;headers.length) sheet.insertColumnsAfter(sheet.getMaxColumns(),headers.length-sheet.getMaxColumns());
+  sheet.clearContents(); sheet.getRange(1,1,1,headers.length).setValues([headers]);
+  var gradeMap={};
+  grades.forEach(function(g){gradeMap[String(g.NIS||'')+'|'+String(g.KodeMapel||'')+'|'+String(g.JenisPenilaian||'').trim().toLowerCase()]=g.Nilai;});
+  var rows=students.map(function(st){
+    var row=[st.NIS||'',st.Nama||'',st.Kelas||''];
+    columns.forEach(function(col){var k=String(st.NIS||'')+'|'+col.kode+'|'+col.komponen.toLowerCase();row.push(gradeMap[k]!==undefined?gradeMap[k]:'');});
+    return row;
+  });
+  if(rows.length) sheet.getRange(2,1,rows.length,headers.length).setValues(rows);
+  sheet.setFrozenRows(1); sheet.getRange(1,1,1,headers.length).setFontWeight('bold');
+  return {success:true,message:'Sheet Penilaian disesuaikan otomatis.',data:{columns:headers.length,students:rows.length}};
+}
+
+function getSheetData(sheetName) {
+  var ss = getRequestSpreadsheet_();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { success: true, message: 'Sheet tidak ditemukan', data: [] };
+  
+  var values = sheet.getDataRange().getValues();
+  if (values.length &lt;= 1) return { success: true, message: 'Data kosong', data: [] };
+  
+  var headers = values[0];
+  var list = [];
+  for (var i = 1; i &lt; values.length; i++) {
+    var row = values[i];
+    var obj = {};
+    for (var j = 0; j &lt; headers.length; j++) {
+      obj[headers[j]] = row[j];
+    }
+    list.push(obj);
+  }
+  return { success: true, message: 'OK', data: list };
+}
+
+function addOrUpdateRow(sheetName, dataObj, keyField) {
+  var ss = getRequestSpreadsheet_();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { success: false, message: 'Sheet tidak ditemukan' };
+  
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var keyVal = dataObj[keyField];
+  var rowIndex = -1;
+  
+  for (var i = 1; i &lt; values.length; i++) {
+    var rowKey = values[i][headers.indexOf(keyField)];
+    if (rowKey == keyVal) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+  
+  var rowData = headers.map(function(h) { return dataObj[h] !== undefined ? dataObj[h] : ''; });
+  
+  if (rowIndex &gt; 0) {
+    sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+  return { success: true, message: 'Data berhasil disimpan', data: null };
+}
+
+function appendMultipleRows(sheetName, records) {
+  var ss = getRequestSpreadsheet_();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet || !records || records.length === 0) return { success: false, message: 'Gagal simpan data batch' };
+
+  var headers = sheet.getDataRange().getValues()[0];
+  var rows = records.map(function(dataObj) {
+    return headers.map(function(h) { return dataObj[h] !== undefined ? dataObj[h] : ''; });
+  });
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
+  return { success: true, message: 'Data absensi berhasil disimpan', data: { inserted: rows.length } };
+}
+
+// Import Excel: validasi header, normalisasi data, update berdasarkan key, dan batch insert.
+function importRowsToSheet(sheetName, records, keyField) {
+  var ss = getRequestSpreadsheet_();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { success: false, message: 'Sheet ' + sheetName + ' tidak ditemukan.', data: null };
+  if (!Array.isArray(records) || records.length === 0) {
+    return { success: false, message: 'Tidak ada data untuk diimport.', data: null };
+  }
+
+  var range = sheet.getDataRange();
+  var values = range.getValues();
+  var headers = values.length ? values[0].map(String) : [];
+  var keyIndex = headers.indexOf(keyField);
+  if (keyIndex === -1) return { success: false, message: 'Kolom kunci ' + keyField + ' tidak ditemukan.', data: null };
+
+  var existing = {};
+  for (var i = 1; i &lt; values.length; i++) {
+    var k = String(values[i][keyIndex] == null ? '' : values[i][keyIndex]).trim();
+    if (k) existing[k] = i + 1;
+  }
+
+  var inserted = 0, updated = 0, skipped = 0;
+  var appendRows = [];
+  records.forEach(function(obj) {
+    var key = String(obj[keyField] == null ? '' : obj[keyField]).trim();
+    if (!key) { skipped++; return; }
+    var row = headers.map(function(h) { return obj[h] !== undefined &amp;&amp; obj[h] !== null ? obj[h] : ''; });
+    if (existing[key]) {
+      sheet.getRange(existing[key], 1, 1, headers.length).setValues([row]);
+      updated++;
+    } else {
+      appendRows.push(row);
+      existing[key] = -1;
+      inserted++;
+    }
+  });
+  if (appendRows.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length).setValues(appendRows);
+  }
+  return { success: true, message: 'Import ' + sheetName + ' selesai.', data: { inserted: inserted, updated: updated, skipped: skipped, total: records.length } };
+}
+
+function deleteRowByKey(sheetName, keyField, keyValue) {
+  var ss = getRequestSpreadsheet_();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { success: false, message: 'Sheet tidak ditemukan' };
+  
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var colIndex = headers.indexOf(keyField);
+  
+  for (var i = 1; i &lt; values.length; i++) {
+    if (values[i][colIndex] == keyValue) {
+      sheet.deleteRow(i + 1);
+      return { success: true, message: 'Data berhasil dihapus', data: null };
+    }
+  }
+  return { success: false, message: 'Data tidak ditemukan', data: null };
+}
+
+
+// =================================================================
+// HALO-HALO AI GURU
+// Arsitektur hemat biaya: browser melakukan Speech-to-Text, backend
+// hanya mengirim teks ke OpenAI Responses API. Audio tidak dikirim.
+// API key disimpan di Script Properties, bukan di HTML.
+// =================================================================
+var HALO_AI_MODEL = 'gpt-5.6-luna';
+var HALO_AI_DAILY_LIMIT = 20;
+
+function getHaloTodayKey_(username) {
+  var tz = Session.getScriptTimeZone() || 'Asia/Jakarta';
+  return 'HALO_QUOTA_' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '_' + String(username || '').toLowerCase();
+}
+
+function getOpenAiApiKey_() {
+  return String(PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY') || '').trim();
+}
+
+function getOpenAiStatus(body) {
+  body = body || {};
+  var username = String(body.username || '').trim();
+  var key = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
+  var props = PropertiesService.getScriptProperties();
+  var used = Number(props.getProperty(getHaloTodayKey_(username)) || 0);
+  return { success: true, message: 'OK', data: { configured: !!key, model: HALO_AI_MODEL, used: used, limit: HALO_AI_DAILY_LIMIT } };
+}
+
+function saveOpenAiApiKey(body) {
+  body = body || {};
+  var key = String(body.apiKey || '').trim();
+  if (!key) return { success: false, message: 'API Key OpenAI wajib diisi.', data: null };
+  PropertiesService.getScriptProperties().setProperty('OPENAI_API_KEY', key);
+  return { success: true, message: 'API Key OpenAI tersimpan aman di Script Properties.', data: { configured: true, model: HALO_AI_MODEL } };
+}
+
+function validateGuruForAI_(username) {
+  username = String(username || '').trim().toLowerCase();
+  if (!username) return false;
+  var users = getSheetData('Users').data || [];
+  return users.some(function(u) {
+    return String(u.Username || '').trim().toLowerCase() === username &amp;&amp; String(u.Role || '').trim().toLowerCase() === 'guru' &amp;&amp; String(u.Status || '').trim().toLowerCase() === 'aktif';
+  });
+}
+
+function consumeHaloQuota_(username) {
+  var props = PropertiesService.getScriptProperties();
+  var key = getHaloTodayKey_(username);
+  var used = Number(props.getProperty(key) || 0);
+  if (used &gt;= HALO_AI_DAILY_LIMIT) return false;
+  props.setProperty(key, String(used + 1));
+  return true;
+}
+
+function buildHaloContext_() {
+  var students = getSheetData('Siswa').data || [];
+  var subjects = getSheetData('MasterMapel').data || [];
+  return {
+    students: students.slice(0, 300).map(function(s) { return { NIS: String(s.NIS || ''), Nama: String(s.Nama || ''), Kelas: String(s.Kelas || '') }; }),
+    subjects: subjects.slice(0, 200).map(function(m) { return { Kode: String(m.Kode || ''), NamaMapel: String(m.NamaMapel || ''), Kelas: String(m.Kelas || ''), Status: String(m.Status || '') }; })
+  };
+}
+
+function parseOpenAiText_(json) {
+  if (json &amp;&amp; json.output_text) return String(json.output_text);
+  var out = json &amp;&amp; json.output ? json.output : [];
+  var parts = [];
+  out.forEach(function(item) {
+    (item.content || []).forEach(function(c) {
+      if (c.text) parts.push(c.text);
+    });
+  });
+  return parts.join('\n').trim();
+}
+
+function extractJsonObject_(text) {
+  text = String(text || '').trim();
+  try { return JSON.parse(text); } catch (e) {}
+  var match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Respons AI bukan JSON yang valid.');
+  return JSON.parse(match[0]);
+}
+
+function callHaloOpenAI_(instruction, context) {
+  var apiKey = getOpenAiApiKey_();
+  if (!apiKey) throw new Error('API Key OpenAI belum diatur. Buka Asisten AI Guru lalu simpan API Key.');
+  var system = [
+    'Anda adalah Halo-Halo, asisten operasional LMS sekolah untuk guru Indonesia.',
+    'Balas HANYA JSON valid tanpa markdown.',
+    'Format: {"action":"none|open_view|search_student|input_grade","reply":"...","view":"","student":{"NIS":"","Nama":"","Kelas":""},"intent":{"NIS":"","NamaSiswa":"","KodeMapel":"","NamaMapel":"","Kelas":"","JenisPenilaian":"","Nilai":0}}',
+    'Jangan pernah mengarang NIS, nama siswa, kode mapel, atau nilai. Gunakan data konteks yang diberikan.',
+    'Untuk navigasi guru gunakan view: dashboard, data-siswa, master-mapel, absensi, penilaian, hasil-belajar, jurnal, pengumuman, asisten-ai.',
+    'Untuk input nilai: NIS dan Nilai wajib. Jika jenis penilaian belum jelas, tanyakan. Jika mapel belum jelas, tanyakan; jangan menebak.',
+    'Nilai harus angka 0 sampai 100. Pahami angka Bahasa Indonesia seperti delapan puluh=80, sembilan puluh lima=95, seratus=100.',
+    'Jika pengguna mengucapkan "absen 1" sebagai jenis penilaian, pertahankan sebagai "Absen 1".',
+    'Jawaban reply singkat dan natural dalam Bahasa Indonesia.'
+  ].join('\n');
+  var payload = {
+    model: HALO_AI_MODEL,
+    input: system + '\n\nKONTEKS DATA:\n' + JSON.stringify(context) + '\n\nPERINTAH GURU:\n' + instruction,
+    max_output_tokens: 500
+  };
+  var response = UrlFetchApp.fetch('https://api.openai.com/v1/responses', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + apiKey },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  var code = response.getResponseCode();
+  var text = response.getContentText();
+  if (code &lt; 200 || code &gt;= 300) throw new Error('OpenAI API error ' + code + ': ' + text.substring(0, 500));
+  return extractJsonObject_(parseOpenAiText_(JSON.parse(text)));
+}
+
+function haloHalo(body) {
+  body = body || {};
+  var username = String(body.username || '').trim();
+  var role = String(body.role || '').trim().toLowerCase();
+  var text = String(body.text || '').trim();
+  if (role !== 'guru' || !validateGuruForAI_(username)) return { success: false, message: 'Asisten Halo-Halo hanya dapat digunakan oleh akun Guru aktif.', data: null };
+  if (!text) return { success: false, message: 'Perintah kosong.', data: null };
+  if (!consumeHaloQuota_(username)) return { success: false, message: 'Kuota Halo-Halo hari ini sudah habis. Batas harian: ' + HALO_AI_DAILY_LIMIT + ' permintaan.', data: null };
+  try {
+    var ai = callHaloOpenAI_(text, buildHaloContext_());
+    if (ai.action === 'search_student' &amp;&amp; ai.student &amp;&amp; ai.student.NIS) {
+      var students = getSheetData('Siswa').data || [];
+      var found = students.filter(function(s) { return String(s.NIS || '').trim() === String(ai.student.NIS).trim(); })[0];
+      if (found) ai.student = { NIS: found.NIS, Nama: found.Nama, Kelas: found.Kelas };
+    }
+    if (ai.action === 'input_grade' &amp;&amp; ai.intent) {
+      var intent = ai.intent;
+      var studentRows = getSheetData('Siswa').data || [];
+      var student = studentRows.filter(function(s) { return String(s.NIS || '').trim() === String(intent.NIS || '').trim(); })[0];
+      if (!student) { ai.action = 'none'; ai.reply = 'NIS tersebut tidak ditemukan di Data Siswa. Silakan periksa kembali NIS.'; }
+      else {
+        intent.NIS = String(student.NIS);
+        intent.NamaSiswa = student.Nama;
+        intent.Kelas = intent.Kelas || student.Kelas;
+        var grade = Number(intent.Nilai);
+        if (!isFinite(grade) || grade &lt; 0 || grade &gt; 100) { ai.action='none'; ai.reply='Nilai harus berupa angka antara 0 sampai 100.'; }
+        else {
+          var maps = getSheetData('MasterMapel').data || [];
+          if (!intent.KodeMapel &amp;&amp; intent.NamaMapel) {
+            var foundMapel = maps.filter(function(m) { return String(m.NamaMapel || '').trim().toLowerCase() === String(intent.NamaMapel).trim().toLowerCase() &amp;&amp; String(m.Status || 'aktif').toLowerCase() !== 'nonaktif'; })[0];
+            if (foundMapel) { intent.KodeMapel = foundMapel.Kode; intent.NamaMapel = foundMapel.NamaMapel; }
+          }
+          if (!intent.KodeMapel) {
+            ai.action = 'none';
+            ai.reply = 'Mapel belum disebutkan. Silakan sebutkan nama atau kode mapelnya terlebih dahulu.';
+          } else {
+            var validMapel = maps.filter(function(m) { return String(m.Kode || '').trim().toLowerCase() === String(intent.KodeMapel).trim().toLowerCase() &amp;&amp; String(m.Status || 'aktif').toLowerCase() !== 'nonaktif'; })[0];
+            if (!validMapel) { ai.action='none'; ai.reply='Kode atau nama mapel tersebut tidak ditemukan di Master Mapel.'; }
+            else { intent.KodeMapel = validMapel.Kode; intent.NamaMapel = validMapel.NamaMapel; intent.Nilai = grade; }
+          }
         }
+      }
+      ai.intent = intent;
+    }
+    return { success: true, message: 'OK', data: ai };
+  } catch (e) {
+    return { success: false, message: e.message || String(e), data: null };
+  }
+}
 
-        // ============================================================
-        // KIRIM KE APPS SCRIPT
-        // ============================================================
-        async function sendToAppsScript() {
-            if (isSending) {
-                showToast('⏳ Proses sedang berjalan, tunggu sebentar...', false);
-                return;
-            }
+function haloHaloConfirm(body) {
+  body = body || {};
+  var username = String(body.username || '').trim();
+  var role = String(body.role || '').trim().toLowerCase();
+  var intent = body.intent || {};
+  if (role !== 'guru' || !validateGuruForAI_(username)) return { success:false, message:'Konfirmasi hanya dapat dilakukan oleh Guru aktif.', data:null };
+  var nis = String(intent.NIS || '').trim();
+  var kode = String(intent.KodeMapel || '').trim();
+  var jenis = String(intent.JenisPenilaian || '').trim();
+  var nilai = Number(intent.Nilai);
+  if (!nis || !kode || !jenis || !isFinite(nilai) || nilai &lt; 0 || nilai &gt; 100) return { success:false, message:'Data nilai belum lengkap. Pastikan NIS, mapel, jenis penilaian, dan nilai sudah benar.', data:null };
+  var students = getSheetData('Siswa').data || [];
+  var student = students.filter(function(s){ return String(s.NIS || '').trim() === nis; })[0];
+  if (!student) return { success:false, message:'Siswa dengan NIS ' + nis + ' tidak ditemukan.', data:null };
+  var subjects = getSheetData('MasterMapel').data || [];
+  var subject = subjects.filter(function(m){ return String(m.Kode || '').trim().toLowerCase() === kode.toLowerCase() &amp;&amp; String(m.Status || 'aktif').toLowerCase() !== 'nonaktif'; })[0];
+  if (!subject) return {success:false, message:'Mapel ' + kode + ' tidak ditemukan atau nonaktif.', data:null};
+  var payload = { ID:'NIL-AI-' + Date.now(), Kelas: student.Kelas || intent.Kelas || '', KodeMapel: subject.Kode, NIS: student.NIS, NamaSiswa: student.Nama, JenisPenilaian: jenis, Nilai: nilai, Tanggal: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Jakarta', 'yyyy-MM-dd') };
+  var result = addOrUpdateRow('Nilai', payload, 'ID');
+  if (result.success) result.message = 'Nilai berhasil disimpan: ' + student.Nama + ' (' + nis + ') = ' + nilai + ' untuk ' + jenis + ' pada ' + subject.NamaMapel + '.';
+  return result;
+}
 
-            let url = document.getElementById('script_url').value.trim() || localStorage.getItem('script_url') || '';
+/**
+ * Menerima data yang dikumpulkan saat MODE OFFLINE lalu memasukkannya
+ * ke Spreadsheet ketika pengguna menekan menu Sinkronisasi.
+ * Format body.recordsBySheet:
+ * {
+ *   Siswa: [...],
+ *   MasterMapel: [...],
+ *   Absensi: [...],
+ *   Nilai: [...],
+ *   Jurnal: [...],
+ *   Pengumuman: [...]
+ * }
+ */
+function syncOfflineData(body) {
+  body = body || {};
+  var recordsBySheet = body.recordsBySheet || {};
+  var allowed = {
+    Siswa: 'NIS',
+    MasterMapel: 'Kode',
+    Absensi: 'ID',
+    Nilai: 'ID',
+    Jurnal: 'ID',
+    Pengumuman: 'ID',
+    HasilKuis: 'ID'
+  };
+  var summary = {};
+  var total = 0;
 
-            if (!url) {
-                showToast('Masukkan URL Apps Script terlebih dahulu!', false);
-                document.getElementById('script_url').focus();
-                return;
-            }
+  Object.keys(recordsBySheet).forEach(function(sheetName) {
+    if (!allowed[sheetName]) return;
+    var records = recordsBySheet[sheetName];
+    if (!Array.isArray(records) || !records.length) return;
 
-            localStorage.setItem('script_url', url);
-            saveValueToDashboard('script_url', url);
-            document.getElementById('script_status_text').textContent = '✅ URL tersimpan';
-            document.getElementById('script_status_text').className = 'text-emerald-600';
+    var result = importRowsToSheet(sheetName, records, allowed[sheetName]);
+    summary[sheetName] = {
+      success: !!result.success,
+      count: records.length,
+      message: result.message || ''
+    };
+    if (result.success) total += records.length;
+  });
 
-            if (questions.length === 0) {
-                showToast('Tidak ada soal untuk dikirim!', false);
-                return;
-            }
+  return {
+    success: true,
+    message: total
+      ? 'Sinkronisasi selesai. ' + total + ' data berhasil dikirim ke Spreadsheet.'
+      : 'Tidak ada data offline yang perlu disinkronkan.',
+    data: { total: total, sheets: summary }
+  };
+}
 
-            for (let i = 0; i < questions.length; i++) {
-                const q = questions[i];
-                if (!q.pertanyaan.trim()) {
-                    showToast(`Soal ${i+1}: Pertanyaan masih kosong!`, false);
-                    return;
-                }
-                if (!q.jawaban) {
-                    showToast(`Soal ${i+1}: Kunci jawaban belum ditentukan!`, false);
-                    return;
-                }
-                if (q.tipe === 'MENJODOHKAN' && (!q.kiri[0] || !q.kiri[1] || !q.kiri[2])) {
-                    showToast(`Soal ${i+1}: Isi semua sisi kiri untuk Menjodohkan!`, false);
-                    return;
-                }
-            }
-
-            showConfirm(`Kirim ${questions.length} soal ke Google Sheets?`, async () => {
-                isSending = true;
-                const btn = document.getElementById('btn_send');
-                btn.disabled = true;
-                btn.innerHTML = `<span class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span> Mengirim...`;
-
-                try {
-                    const startDate = document.getElementById('quiz_start_date').value || new Date().toISOString().slice(0, 16);
-                    const endDate = document.getElementById('quiz_end_date').value || new Date(Date.now() + 7*24*60*60*1000).toISOString().slice(0, 16);
-                    const duration = parseInt(document.getElementById('quiz_duration').value) || 30;
-
-                    const payload = {
-                        action: 'save_kuis',
-                        metadata: {
-                            waktu_mulai: startDate.replace('T', ' '),
-                            waktu_selesai: endDate.replace('T', ' '),
-                            durasi: duration
-                        },
-                        questions: questions.map(q => ({
-                            tipe: q.tipe || 'PG',
-                            pertanyaan: q.pertanyaan || '',
-                            pilihanA: q.pilihanA || '',
-                            pilihanB: q.pilihanB || '',
-                            pilihanC: q.pilihanC || '',
-                            pilihanD: q.pilihanD || '',
-                            jawaban: q.jawaban || '',
-                            kiri: q.kiri || ['', '', ''],
-                            jodohIndex: q.jodohIndex || ['A', 'B', 'C']
-                        }))
-                    };
-
-                    console.log('📤 Mengirim data:', JSON.stringify(payload, null, 2));
-
-                    showToast('⏳ Mengirim data ke server...', true);
-
-                    await fetch(url, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        headers: { 
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-
-                    showToast('✅ Data berhasil dikirim! Silakan cek spreadsheet.', true);
-
-                    setTimeout(async () => {
-                        try {
-                            const verifyResponse = await fetch(url + '?action=get_kuis');
-                            if (verifyResponse.ok) {
-                                const verifyResult = await verifyResponse.json();
-                                if (verifyResult.status === 'success' && verifyResult.data && verifyResult.data.length > 0) {
-                                    showToast(`✅ Terverifikasi! ${verifyResult.data.length} soal tersimpan.`, true);
-                                }
-                            }
-                        } catch (e) {
-                            console.log('Verifikasi tidak bisa dilakukan karena CORS');
-                        }
-                    }, 5000);
-
-                } catch (error) {
-                    console.error('❌ Error:', error);
-                    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                        showToast('⚠️ Data mungkin sudah terkirim. Cek spreadsheet secara manual.', false);
-                    } else {
-                        showToast('❌ Gagal mengirim: ' + error.message, false);
-                    }
-                } finally {
-                    isSending = false;
-                    btn.disabled = false;
-                    btn.innerHTML = `<i class="bi bi-cloud-upload-fill text-sm"></i> Kirim Kuis`;
-                }
-            });
-        }
-
-        // ============================================================
-        // LOAD FROM APPS SCRIPT
-        // ============================================================
-        async function loadFromAppsScript() {
-            let url = document.getElementById('script_url').value.trim() || localStorage.getItem('script_url') || '';
-
-            if (!url) {
-                showToast('Masukkan URL Apps Script terlebih dahulu!', false);
-                document.getElementById('script_url').focus();
-                return;
-            }
-
-            const btn = document.getElementById('btn_load');
-            btn.disabled = true;
-            btn.innerHTML = `<span class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent mr-1"></span> Memuat...`;
-
-            try {
-                showToast('⏳ Memuat data dari server...', true);
-
-                const response = await fetch(url + '?action=get_kuis');
-                const result = await response.json();
-
-                if (result.status === 'success' && result.data && result.data.length > 0) {
-                    const loadedQuestions = result.data.map((row, idx) => {
-                        let rawType = (row['Tipe'] || 'PG').toString().trim();
-                        let pertanyaan = row['Pertanyaan'] || '';
-                        let jawaban = (row['Jawaban'] || '').toString().trim();
-                        let kiri = ['', '', ''];
-                        let jodohIndex = ['A', 'B', 'C'];
-
-                        if (rawType === 'MENJODOHKAN') {
-                            const parts = pertanyaan.split(';');
-                            pertanyaan = parts[0] || '';
-                            kiri = [parts[1] || '', parts[2] || '', parts[3] || ''];
-                            const jodoh = jawaban.split(';');
-                            jodohIndex = [jodoh[0] || 'A', jodoh[1] || 'B', jodoh[2] || 'C'];
-                        }
-
-                        return {
-                            id: idx + 1,
-                            tipe: rawType,
-                            pertanyaan: pertanyaan,
-                            pilihanA: row['Pilihan A'] || '',
-                            pilihanB: row['Pilihan B'] || '',
-                            pilihanC: row['Pilihan C'] || '',
-                            pilihanD: row['Pilihan D'] || '',
-                            jawaban: jawaban,
-                            kiri: kiri,
-                            jodohIndex: jodohIndex
-                        };
-                    });
-
-                    questions = loadedQuestions;
-                    renderQuestions();
-                    updateCounter();
-                    showToast(`✅ Berhasil memuat ${questions.length} soal dari spreadsheet!`, true);
-                } else {
-                    showToast('ℹ️ Belum ada data di spreadsheet', false);
-                }
-
-            } catch (error) {
-                console.error('Error loading data:', error);
-                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                    showToast('⚠️ Gagal memuat data. Cek koneksi dan URL Apps Script.', false);
-                } else {
-                    showToast('❌ Gagal memuat data: ' + error.message, false);
-                }
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = `<i class="bi bi-cloud-download-fill text-sm"></i> Muat Data`;
-            }
-        }
-
-        // ============================================================
-        // RESIZE HANDLER
-        // ============================================================
-        window.addEventListener('resize', function() {
-            // Tidak ada aksi khusus
-        });
-
-    </script>
-
-</body>
-</html>
+function clearAllData() {
+  var ss = getRequestSpreadsheet_();
+  var sheets = ss.getSheets();
+  for (var i = 0; i &lt; sheets.length; i++) {
+    var sheet = sheets[i];
+    var lastRow = sheet.getLastRow();
+    if (lastRow &gt; 1) {
+      sheet.deleteRows(2, lastRow - 1);
+    }
+  }
+  return { success: true, message: 'Seluruh isi data spreadsheet telah dikosongkan (Header tetap dipertahankan).', data: null };
+}
+</template>
+<script>
+const CONFIG_KEY='edusmart_config', SESSION_KEY='edusmart_session', LEGACY_URL='edusmart_script_url', LEGACY_DB='edusmart_spreadsheet_id';
+const saved=(()=>{try{return JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')}catch(e){return {}}})();
+const state={config:Object.assign({spreadsheetId:'',scriptUrl:'',mode:'offline',isOnline:false},saved),session:null,quizzes:[],questions:[],subjects:[],classes:[],selected:null};
+try{state.session=JSON.parse(localStorage.getItem(SESSION_KEY)||'null')}catch(e){state.session=null}
+if(!state.config.spreadsheetId) state.config.spreadsheetId=localStorage.getItem(LEGACY_DB)||'';
+if(!state.config.scriptUrl) state.config.scriptUrl=localStorage.getItem(LEGACY_URL)||'';
+function $(id){return document.getElementById(id)}
+function toast(msg,type='info'){const el=document.createElement('div');el.className='px-4 py-3 rounded-xl shadow-lg text-sm font-semibold '+(type==='error'?'bg-red-600 text-white':type==='success'?'bg-emerald-600 text-white':'bg-slate-800 text-white');el.textContent=msg;$('toast').appendChild(el);setTimeout(()=>el.remove(),4500)}
+function esc(v){return String(v==null?'':v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function apiUrl(){return String(state.config.scriptUrl||'').trim().replace(/\/$/,'')}
+async function rpc(action,body={}){const url=apiUrl();if(!url)throw Error('URL Web App Apps Script belum tersedia. Buka Setting Database pada aplikasi utama.');if(!state.config.spreadsheetId)throw Error('Spreadsheet ID belum tersedia.');const payload=Object.assign({},body,{action,spreadsheetId:state.config.spreadsheetId});const form=new URLSearchParams();Object.keys(payload).forEach(k=>form.append(k,typeof payload[k]==='object'?JSON.stringify(payload[k]):String(payload[k]??'')));const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),20000);try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString(),mode:'cors',credentials:'omit',cache:'no-store',redirect:'follow',signal:ctl.signal});const raw=await r.text();if(!r.ok)throw Error('HTTP '+r.status);let data;try{data=JSON.parse(raw)}catch(e){throw Error('Respons API bukan JSON. Pastikan Web App berakhiran /exec dan deployment aktif.')}if(!data.success)throw Error(data.message||'Permintaan gagal.');return data}finally{clearTimeout(t)}}
+function teacherBody(extra={}){return Object.assign({username:state.session?.Username||'',role:'guru'},extra)}
+function isOnline(){return !!(apiUrl()&&state.config.spreadsheetId)}
+async function init(){
+ $('connection').textContent=isOnline()?'MODE ONLINE':'DATABASE BELUM TERHUBUNG';
+ $('connection').className='px-3 py-1.5 rounded-full text-xs font-semibold '+(isOnline()?'bg-emerald-400 text-emerald-950':'bg-amber-300 text-amber-950');
+ if(state.session&&String(state.session.Role||'').toLowerCase()==='guru'){showApp();await loadData()}else{$('login-panel').classList.remove('hidden')}
+}
+function showApp(){$('login-panel').classList.add('hidden');$('app').classList.remove('hidden');$('user-badge').textContent=state.session?.Nama||state.session?.Username||'Guru';$('user-badge').classList.remove('hidden')}
+$('login-form').addEventListener('submit',async e=>{e.preventDefault();try{const r=await rpc('login',{username:$('login-user').value,password:$('login-pass').value,role:'guru'});state.session=r.data;localStorage.setItem(SESSION_KEY,JSON.stringify(state.session));showApp();await loadData();toast('Login Guru berhasil.','success')}catch(err){toast(err.message,'error')}})
+function isGrade5Class(v){const x=String(v==null?'':v).trim().toLowerCase().replace(/\s+/g,'');if(!x)return false;return /^(kelas)?5([\-_/ ].*)?$/.test(x)||/^(kelas)?v([\-_/ ].*)?$/.test(x)||x.indexOf('kelas5')===0||x.indexOf('kelasv')===0||x.indexOf('5-')===0||x.indexOf('v-')===0}
+function grade5Subjects(){const arr=(state.subjects||[]).filter(s=>{const k=String(s.Kelas==null?'':s.Kelas).trim();return !k||isGrade5Class(k)||/^(semua|all)$/i.test(k)});return arr.length?arr:(state.subjects||[])}
+function grade5Classes(){const found=[];(state.classes||[]).forEach(c=>{if(isGrade5Class(c)&&!found.some(x=>x.toLowerCase()===String(c).toLowerCase()))found.push(String(c))});if(!found.length)found.push('Kelas 5');return found.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))}
+async function loadData(){if(!isOnline()){toast('Hubungkan aplikasi dengan Web App dan Spreadsheet terlebih dahulu.','error');return}try{const [q,sq,sub,stu]=await Promise.all([rpc('getQuizzes'),rpc('getQuizQuestions'),rpc('getSubjects'),rpc('getStudents')]);state.quizzes=q.data||[];state.questions=sq.data||[];state.subjects=sub.data||[];state.classes=[...new Set((stu.data||[]).map(x=>String(x.Kelas||'').trim()).filter(Boolean))];renderQuizzes();if(state.selected){const found=state.quizzes.find(x=>String(x.ID)===String(state.selected));if(found)selectQuiz(found);else clearSelection()}}catch(e){toast(e.message,'error')}}
+function renderQuizzes(){ $('quiz-count').textContent=state.quizzes.length+' kuis'; const box=$('quiz-list'); if(!state.quizzes.length){box.innerHTML='<div class="text-center py-12 text-slate-400"><i class="fa-solid fa-circle-question text-3xl"></i><p class="mt-2 font-semibold">Belum ada kuis.</p><p class="text-xs mt-1">Klik Kuis Baru atau import Excel.</p></div>';return} box.innerHTML=state.quizzes.map(q=>{const n=state.questions.filter(x=>String(x.KuisID)===String(q.ID)).length;return `<button onclick='selectQuiz(${JSON.stringify(q).replace(/</g,'\\u003c')})' class="w-full text-left p-4 rounded-xl border hover:border-indigo-300 hover:bg-indigo-50/40 transition ${String(state.selected)===String(q.ID)?'border-indigo-500 bg-indigo-50':''}"><div class="flex justify-between gap-2"><div><div class="font-bold text-slate-800">${esc(q.Judul)}</div><div class="text-xs text-slate-500 mt-1">${esc(q.Kelas)} ${q.KodeMapel?'• '+esc(q.KodeMapel):''}</div></div><span class="text-xs font-bold px-2 py-1 rounded-lg bg-slate-100">${n}/${Number(q.JumlahSoal||0)} soal</span></div><div class="text-xs text-slate-500 mt-2"><i class="fa-regular fa-clock mr-1"></i>${Number(q.DurasiMenit||0)} menit</div></button>`}).join('')}
+function clearSelection(){state.selected=null;$('question-header').innerHTML='<div class="text-center text-slate-400 py-16"><i class="fa-solid fa-arrow-left text-2xl"></i><p class="mt-3 font-semibold">Pilih kuis untuk mengelola soal.</p></div>';$('question-area').innerHTML=''}
+function selectQuiz(q){state.selected=q.ID;renderQuizzes();renderQuestionArea(q)}
+function renderQuestionArea(q){const qs=state.questions.filter(x=>String(x.KuisID)===String(q.ID));$('question-header').innerHTML=`<div class="flex flex-wrap items-start justify-between gap-3"><div><h3 class="font-extrabold text-lg">${esc(q.Judul)}</h3><p class="text-xs text-slate-500 mt-1">${esc(q.Kelas)} ${q.KodeMapel?'• '+esc(q.KodeMapel):''} • ${Number(q.DurasiMenit||0)} menit • target ${Number(q.JumlahSoal||0)} soal</p></div><div class="flex gap-2"><button onclick='openQuizForm(${JSON.stringify(q).replace(/</g,'\\u003c')})' class="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold"><i class="fa-solid fa-pen mr-1"></i>Edit</button><button onclick="deleteQuiz('${esc(q.ID)}')" class="px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs font-bold"><i class="fa-solid fa-trash mr-1"></i>Hapus</button></div></div>`;$('question-area').innerHTML=`<div class="p-5"><div class="flex flex-wrap items-center justify-between gap-2 mb-4"><div><h4 class="font-bold">Daftar Soal <span class="text-indigo-600">(${qs.length})</span></h4><p class="text-xs text-slate-500">Pilihan ganda A-D. Kunci jawaban disimpan di database.</p></div><div class="flex gap-2"><button onclick="openQuestionForm()" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold"><i class="fa-solid fa-plus mr-1"></i>Tambah Soal</button><button onclick="downloadQuestionTemplate('${esc(q.ID)}')" class="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold"><i class="fa-solid fa-file-excel mr-1"></i>Template Soal</button></div></div><div class="space-y-3">${qs.length?qs.map((x,i)=>`<div class="border rounded-xl p-4"><div class="flex justify-between gap-3"><div class="flex gap-3"><span class="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">${i+1}</span><div><div class="font-semibold text-sm leading-6">${esc(x.Pertanyaan)}</div><div class="grid sm:grid-cols-2 gap-2 mt-3 text-xs"><div class="p-2 rounded-lg bg-slate-50"><b>A.</b> ${esc(x.OpsiA)}</div><div class="p-2 rounded-lg bg-slate-50"><b>B.</b> ${esc(x.OpsiB)}</div><div class="p-2 rounded-lg bg-slate-50"><b>C.</b> ${esc(x.OpsiC)}</div><div class="p-2 rounded-lg bg-slate-50"><b>D.</b> ${esc(x.OpsiD)}</div></div><div class="mt-2 text-xs font-bold text-emerald-700">Kunci: ${esc(x.KunciJawaban)}</div></div></div><div class="flex gap-1 shrink-0"><button onclick='openQuestionForm(${JSON.stringify(x).replace(/</g,'\\u003c')})' class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600"><i class="fa-solid fa-pen text-xs"></i></button><button onclick="deleteQuestion('${esc(x.ID)}')" class="w-8 h-8 rounded-lg bg-red-50 text-red-600"><i class="fa-solid fa-trash text-xs"></i></button></div></div></div>`).join(''):'<div class="text-center py-12 text-slate-400 border border-dashed rounded-xl"><i class="fa-solid fa-list-check text-3xl"></i><p class="mt-2 font-semibold">Belum ada soal.</p><p class="text-xs mt-1">Tambah soal satu per satu atau import Excel.</p></div>'}</div></div>`}
+function openModal(html){$('modal-body').innerHTML=html;$('modal').classList.remove('hidden');$('modal').classList.add('flex')}
+function closeModal(){$('modal').classList.add('hidden');$('modal').classList.remove('flex')}
+$('modal').addEventListener('click',e=>{if(e.target===$('modal'))closeModal()})
+function subjectOptions(selected){const list=grade5Subjects();return '<option value="">-- Pilih Mapel Kelas 5 --</option>'+list.map(s=>`<option value="${esc(s.Kode)}" ${String(s.Kode)===String(selected||'')?'selected':''}>${esc(s.Kode)} - ${esc(s.NamaMapel)}</option>`).join('')} 
+function classOptions(selected){const list=grade5Classes();let html='<option value="">-- Pilih Kelas 5 --</option>'+list.map(c=>`<option value="${esc(c)}" ${String(c)===String(selected||'')?'selected':''}>${esc(c)}</option>`).join('');if(selected&&!list.some(c=>String(c)===String(selected)))html+=`<option value="${esc(selected)}" selected>${esc(selected)} (data lama)</option>`;return html}
+function openQuizForm(q=null){const edit=!!q;openModal(`<div class="p-6"><div class="flex justify-between items-center mb-5"><div><h3 class="text-xl font-extrabold">${edit?'Edit Kuis':'Kuis Baru'}</h3><p class="text-sm text-slate-500">Informasi dasar kuis.</p></div><button onclick="closeModal()" class="text-slate-400 text-xl"><i class="fa-solid fa-xmark"></i></button></div><form id="quiz-form" class="space-y-4"><input type="hidden" id="q-id" value="${esc(q?.ID||'')}"><div><label class="text-xs font-bold">Judul Kuis</label><input id="q-title" required value="${esc(q?.Judul||'')}" class="w-full mt-1 border rounded-xl px-3 py-3"></div><div class="grid sm:grid-cols-2 gap-4"><div><label class="text-xs font-bold">Mata Pelajaran <span class="text-indigo-600">(Kelas 5)</span></label><select id="q-subject" class="w-full mt-1 border rounded-xl px-3 py-3">${subjectOptions(q?.KodeMapel)}</select></div><div><label class="text-xs font-bold">Kelas <span class="text-indigo-600">(Kelas 5)</span></label><select id="q-class" required class="w-full mt-1 border rounded-xl px-3 py-3">${classOptions(q?.Kelas)}</select></div></div><div class="grid sm:grid-cols-2 gap-4"><div><label class="text-xs font-bold">Jumlah Soal</label><input id="q-count" type="number" min="1" required value="${Number(q?.JumlahSoal||10)}" class="w-full mt-1 border rounded-xl px-3 py-3"></div><div><label class="text-xs font-bold">Durasi (menit)</label><input id="q-duration" type="number" min="1" required value="${Number(q?.DurasiMenit||30)}" class="w-full mt-1 border rounded-xl px-3 py-3"></div></div><div class="bg-indigo-50 text-indigo-800 text-xs rounded-xl p-3"><b>Referensi otomatis Kelas 5 SD:</b> pilihan mapel diambil dari Master Mapel yang terkait Kelas 5, sedangkan pilihan kelas diambil dari data siswa Kelas 5. Setelah kuis dibuat, tambahkan soal melalui panel kanan. Jumlah soal dapat disinkronkan otomatis dari jumlah soal yang sebenarnya.</div><div class="flex justify-end gap-2"><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl bg-slate-100 font-bold">Batal</button><button class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold">Simpan Kuis</button></div></form></div>`);$('quiz-form').onsubmit=async e=>{e.preventDefault();try{const quizId=$('q-id').value.trim()||('KUIS-'+Date.now()+'-'+Math.floor(Math.random()*1000));const payload=teacherBody({records:[{ID:quizId,Judul:$('q-title').value,KodeMapel:$('q-subject').value,Kelas:$('q-class').value,JumlahSoal:Number($('q-count').value),DurasiMenit:Number($('q-duration').value)}]});await rpc('importQuizzes',payload);closeModal();await loadData();state.selected=quizId;const found=state.quizzes.find(x=>String(x.ID)===String(quizId));if(found)selectQuiz(found);toast('Kuis berhasil disimpan ke Spreadsheet.','success')}catch(err){toast(err.message,'error')}}}
+function openQuestionForm(x=null){if(!state.selected){toast('Pilih kuis terlebih dahulu.','error');return}const edit=!!x;openModal(`<div class="p-6"><div class="flex justify-between items-center mb-5"><div><h3 class="text-xl font-extrabold">${edit?'Edit Soal':'Tambah Soal'}</h3><p class="text-sm text-slate-500">Soal pilihan ganda A-D.</p></div><button onclick="closeModal()" class="text-slate-400 text-xl"><i class="fa-solid fa-xmark"></i></button></div><form id="question-form" class="space-y-4"><input type="hidden" id="s-id" value="${esc(x?.ID||'')}"><div><label class="text-xs font-bold">Pertanyaan</label><textarea id="s-question" rows="4" required class="w-full mt-1 border rounded-xl px-3 py-3">${esc(x?.Pertanyaan||'')}</textarea></div><div class="grid sm:grid-cols-2 gap-3">${['A','B','C','D'].map(l=>`<div><label class="text-xs font-bold">Opsi ${l}</label><textarea id="s-${l.toLowerCase()}" rows="3" required class="w-full mt-1 border rounded-xl px-3 py-2">${esc(x?.['Opsi'+l]||'')}</textarea></div>`).join('')}</div><div><label class="text-xs font-bold">Kunci Jawaban</label><select id="s-key" class="w-full mt-1 border rounded-xl px-3 py-3">${['A','B','C','D'].map(l=>`<option ${String(x?.KunciJawaban||'A')===l?'selected':''}>${l}</option>`).join('')}</select></div><div class="flex justify-end gap-2"><button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl bg-slate-100 font-bold">Batal</button><button class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold">Simpan Soal</button></div></form></div>`);$('question-form').onsubmit=async e=>{e.preventDefault();try{const soalId=$('s-id').value.trim()||('SOAL-'+Date.now()+'-'+Math.floor(Math.random()*1000));await rpc('importQuizQuestions',teacherBody({records:[{ID:soalId,KuisID:state.selected,Pertanyaan:$('s-question').value,OpsiA:$('s-a').value,OpsiB:$('s-b').value,OpsiC:$('s-c').value,OpsiD:$('s-d').value,KunciJawaban:$('s-key').value}]}));closeModal();await loadData();toast('Soal berhasil disimpan ke Spreadsheet.','success')}catch(err){toast(err.message,'error')}}}
+async function deleteQuiz(id){if(!confirm('Hapus kuis ini beserta seluruh soalnya?'))return;try{await rpc('deleteQuiz',teacherBody({ID:id}));state.selected=null;await loadData();clearSelection();toast('Kuis berhasil dihapus.','success')}catch(e){toast(e.message,'error')}}
+async function deleteQuestion(id){if(!confirm('Hapus soal ini?'))return;try{await rpc('deleteQuizQuestion',teacherBody({ID:id}));await loadData();toast('Soal berhasil dihapus.','success')}catch(e){toast(e.message,'error')}}
+function downloadTemplate(){if(typeof XLSX==='undefined'){toast('Library Excel belum siap.','error');return}const wb=XLSX.utils.book_new();const kuis=[['ID','Judul','KodeMapel','Kelas','JumlahSoal','DurasiMenit'],['','Kuis IPA Bab 1','IPA','VII-A',10,30]];const soal=[['ID','KuisID','Pertanyaan','OpsiA','OpsiB','OpsiC','OpsiD','KunciJawaban'],['','ISI_ID_KUIS','Contoh pertanyaan?','Pilihan A','Pilihan B','Pilihan C','Pilihan D','A']];XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(kuis),'Kuis');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(soal),'SoalKuis');XLSX.writeFile(wb,'Template_Kuis_EduSmart.xlsx')}
+function downloadQuestionTemplate(quizId){if(typeof XLSX==='undefined')return;const rows=[['ID','KuisID','Pertanyaan','OpsiA','OpsiB','OpsiC','OpsiD','KunciJawaban'],['',quizId,'Contoh pertanyaan?','Pilihan A','Pilihan B','Pilihan C','Pilihan D','A']];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'SoalKuis');XLSX.writeFile(wb,'Template_Soal_'+quizId+'.xlsx')}
+$('excel-input').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(typeof XLSX==='undefined')throw Error('Library Excel belum siap.');const data=await f.arrayBuffer();const wb=XLSX.read(data,{type:'array'});let importedQ=0,importedS=0;if(wb.SheetNames.includes('Kuis')){const rows=XLSX.utils.sheet_to_json(wb.Sheets['Kuis'],{defval:''});if(rows.length){const r=await rpc('importQuizzes',teacherBody({records:rows}));importedQ=r.data?.inserted||r.data?.total||rows.length}}if(wb.SheetNames.includes('SoalKuis')){const rows=XLSX.utils.sheet_to_json(wb.Sheets['SoalKuis'],{defval:''});if(rows.length){const r=await rpc('importQuizQuestions',teacherBody({records:rows}));importedS=r.data?.inserted||r.data?.total||rows.length}}if(!importedQ&&!importedS)throw Error('Workbook harus memiliki sheet Kuis dan/atau SoalKuis.');await loadData();toast('Import selesai: '+importedQ+' kuis, '+importedS+' soal.','success')}catch(err){toast(err.message,'error')}finally{e.target.value=''}})
+async function syncQuizCount(){const q=state.quizzes.find(x=>String(x.ID)===String(state.selected));if(!q)return;const n=state.questions.filter(x=>String(x.KuisID)===String(q.ID)).length;if(Number(q.JumlahSoal)!==n){await rpc('importQuizzes',teacherBody({records:[{ID:q.ID,Judul:q.Judul,KodeMapel:q.KodeMapel,Kelas:q.Kelas,JumlahSoal:n,DurasiMenit:Number(q.DurasiMenit)}]}))}}
+// Penyimpanan kuis menggunakan action importQuizzes/importQuizQuestions agar kompatibel dengan deployment Apps Script yang aktif. Code.gs tidak diubah.
+// Pastikan fungsi backend yang tertanam tetap dapat ditampilkan/di-copy dari modal aplikasi utama bila file ini dipakai sebagai sumber Code.gs.
+window.addEventListener('DOMContentLoaded',init);
+</script>
+</body></html>
