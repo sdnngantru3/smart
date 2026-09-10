@@ -147,6 +147,7 @@
 
   <!-- CODE GAS & GUIDES TEMPLATES (HIDDEN DATA SOURCE FOR MODALS) -->
   <template id="tpl-apps-script-code">
+
 // =================================================================
 // BACKEND GOOGLE APPS SCRIPT - SISTEM PEMBELAJARAN DIGITAL
 // =================================================================
@@ -245,6 +246,9 @@ function handleRequest(action, params, body) {
     else if (action === 'saveMenuGuru') result = saveMenuGuru(body || {});
     else if (action === 'deleteMenuGuru') result = deleteMenuGuru(body || {});
     else if (action === 'reorderMenuGuru') result = reorderMenuGuru(body || {});
+    else if (action === 'getDashboardData') result = getDashboardData();
+    else if (action === 'syncDatabase') result = syncDatabase();
+    else if (action === 'logAktivitas') result = logAktivitas_(getRequestSpreadsheet_(), body.username || body.User || 'Sistem', body.aktivitas || body.Aktivitas || 'Aktivitas aplikasi');
     else if (action === 'getStudents') result = getStudentsByClass((body &amp;&amp; body.kelas) || params.kelas || '');
     else if (action === 'saveStudent') result = saveStudentAndCreateUser(body);
     else if (action === 'importStudents') result = importStudentsAndCreateUsers(body.records || []);
@@ -493,6 +497,86 @@ function ensureDefaultTeacherAccount() {
   }
 }
 
+function getRecentActivities_(ss, limit) {
+  limit = Math.max(1, Number(limit) || 5);
+  try {
+    var rows = getSheetDataFromSpreadsheet_(ss, 'Aktivitas');
+    rows.sort(function(a, b) {
+      var ta = new Date(a.Waktu || 0).getTime() || 0;
+      var tb = new Date(b.Waktu || 0).getTime() || 0;
+      return tb - ta;
+    });
+    return rows.slice(0, limit);
+  } catch (e) { return []; }
+}
+
+function getDashboardData() {
+  // Dashboard mengambil sumber data utama dalam SATU request HTTP.
+  // Ini mengurangi antrean beberapa fetch paralel ke Web App Apps Script,
+  // sehingga dashboard lebih cepat dan lebih konsisten saat dibuka ulang.
+  var ss = getRequestSpreadsheet_();
+  return {
+    success: true,
+    message: 'Data dashboard berhasil dimuat.',
+    data: {
+      students: getSheetDataFromSpreadsheet_(ss, 'Siswa'),
+      subjects: getSheetDataFromSpreadsheet_(ss, 'MasterMapel'),
+      attendance: getSheetDataFromSpreadsheet_(ss, 'Absensi'),
+      grades: getSheetDataFromSpreadsheet_(ss, 'Nilai'),
+      quizzes: getSheetDataFromSpreadsheet_(ss, 'Kuis'),
+      quizResults: getSheetDataFromSpreadsheet_(ss, 'HasilKuis'),
+      activities: getRecentActivities_(ss, 5)
+    }
+  };
+}
+
+// ================================================================
+// AKTIVITAS & SINKRONISASI DATABASE
+// Aktivitas hanya mencatat siapa melakukan aksi penting; tidak menyimpan password.
+// Sinkronisasi membaca data aplikasi dari Spreadsheet tanpa mengubah data database.
+// ================================================================
+function logAktivitas_(ss, user, aktivitas) {
+  try {
+    if (!ss) return false;
+    var sheet = ss.getSheetByName('Aktivitas');
+    if (!sheet) {
+      ensureDatabaseSheetsForSpreadsheet_(ss);
+      sheet = ss.getSheetByName('Aktivitas');
+    }
+    if (!sheet) return false;
+    var id = 'AKT-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    var waktu = new Date();
+    var headers = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
+    var record = { ID:id, Waktu:waktu, User:String(user || 'Sistem'), Aktivitas:String(aktivitas || '') };
+    sheet.appendRow(headers.map(function(h){ return record[h] !== undefined ? record[h] : ''; }));
+    return true;
+  } catch (e) {
+    // Pencatatan aktivitas tidak boleh membuat login/sinkronisasi gagal.
+    return false;
+  }
+}
+
+function syncDatabase() {
+  var ss = getRequestSpreadsheet_();
+  var data = {
+    students: getSheetDataFromSpreadsheet_(ss, 'Siswa'),
+    subjects: getSheetDataFromSpreadsheet_(ss, 'MasterMapel'),
+    attendance: getSheetDataFromSpreadsheet_(ss, 'Absensi'),
+    grades: getSheetDataFromSpreadsheet_(ss, 'Nilai'),
+    penilaianConfig: getSheetDataFromSpreadsheet_(ss, 'PenilaianConfig'),
+    penilaian: getSheetDataFromSpreadsheet_(ss, 'Penilaian'),
+    journals: getSheetDataFromSpreadsheet_(ss, 'Jurnal'),
+    quizzes: getSheetDataFromSpreadsheet_(ss, 'Kuis'),
+    quizQuestions: getSheetDataFromSpreadsheet_(ss, 'SoalKuis'),
+    quizResults: getSheetDataFromSpreadsheet_(ss, 'HasilKuis'),
+    announcements: getSheetDataFromSpreadsheet_(ss, 'Pengumuman'),
+    activities: getRecentActivities_(ss, 5),
+    menuGuru: getSheetDataFromSpreadsheet_(ss, 'MenuGuru'),
+    games: getSheetDataFromSpreadsheet_(ss, 'Game')
+  };
+  return { success:true, message:'Database berhasil dibaca dan disinkronkan ke aplikasi.', data:data };
+}
+
 function getStudentsByClass(kelas) {
   // Pastikan database baru yang masih kosong sudah memiliki Sheet Siswa.
   // Ini penting karena aplikasi utama dapat langsung meminta data siswa
@@ -657,6 +741,7 @@ function loginUser(username, password, role) {
       if (users[i].Status !== 'aktif') {
         return { success: false, message: 'Akun Anda sedang nonaktif.', data: null };
       }
+      logAktivitas_(getRequestSpreadsheet_(), users[i].Username || username, 'Login ' + role + ' berhasil');
       return {
         success: true,
         message: 'Login Berhasil',
@@ -1004,7 +1089,7 @@ function ensureDatabaseSheetsForSpreadsheet_(ss) {
     } else if (sheetName === 'MenuGuru') {
       var currentHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0].map(String);
       headers.forEach(function(h) {
-        if (currentHeaders.indexOf(h) < 0) {
+        if (currentHeaders.indexOf(h) &lt; 0) {
           sheet.getRange(1, sheet.getLastColumn() + 1).setValue(h).setFontWeight('bold').setBackground('#e2e8f0');
           currentHeaders.push(h);
         }
@@ -1081,6 +1166,7 @@ function loginUserBySpreadsheetId(spreadsheetId, username, password, role) {
           String(u.Password == null ? '' : u.Password).trim() === password &amp;&amp;
           String(u.Role == null ? '' : u.Role).trim().toLowerCase() === role) {
         if (String(u.Status || '').toLowerCase() !== 'aktif') return { success: false, message: 'Akun Anda sedang nonaktif.', data: null };
+        logAktivitas_(ss, u.Username || username, 'Login ' + role + ' berhasil');
         return { success: true, message: 'Login Berhasil', data: {
           ID: u.ID, Username: u.Username, Nama: u.Nama, Role: u.Role, NIS: u.NIS, NIP: u.NIP, Kelas: u.Kelas,
           SPREADSHEET_ID: spreadsheetId, DatabaseNama: ss.getName(), DatabaseConfig: config
@@ -1139,16 +1225,16 @@ function quizLoginByNis(spreadsheetId, nis, kelas) {
 
 function ensureQuizColumns_(ss) {
   var defs={Kuis:['ID','Judul','KodeMapel','Kelas','JumlahSoal','DurasiMenit','LinkMateri'],HasilKuis:['ID','KuisID','NIS','NamaSiswa','Benar','Salah','Nilai','Tanggal','WaktuMulai','WaktuSelesai','DurasiDetik','Status']};
-  Object.keys(defs).forEach(function(name){var sh=ss.getSheetByName(name);if(!sh){sh=ss.insertSheet(name);sh.getRange(1,1,1,defs[name].length).setValues([defs[name]]);return;}var last=sh.getLastColumn(),cur=sh.getRange(1,1,Math.max(1,last),1).getValues()[0];defs[name].forEach(function(h){if(cur.indexOf(h)<0){last++;sh.getRange(1,last).setValue(h);cur.push(h);}});sh.setFrozenRows(1);});
+  Object.keys(defs).forEach(function(name){var sh=ss.getSheetByName(name);if(!sh){sh=ss.insertSheet(name);sh.getRange(1,1,1,defs[name].length).setValues([defs[name]]);return;}var last=sh.getLastColumn(),cur=sh.getRange(1,1,Math.max(1,last),1).getValues()[0];defs[name].forEach(function(h){if(cur.indexOf(h)&lt;0){last++;sh.getRange(1,last).setValue(h);cur.push(h);}});sh.setFrozenRows(1);});
 }
 
 function saveQuizBundle(spreadsheetId, quiz, questions) {
   try {var ss=getSpreadsheetById_(spreadsheetId);ensureDatabaseSheetsForSpreadsheet_(ss);ensureQuizColumns_(ss);quiz=quiz||{};if(typeof questions==='string'){try{questions=JSON.parse(questions);}catch(e){questions=[];}}
     if(!quiz.Judul||!quiz.KodeMapel||!quiz.Kelas)return {success:false,message:'Judul, mata pelajaran, dan kelas wajib diisi.',data:null};
     if(!Array.isArray(questions)||!questions.length)return {success:false,message:'Minimal satu soal harus tersedia.',data:null};
-    var durasi=Number(quiz.DurasiMenit);if(!isFinite(durasi)||durasi<1)return {success:false,message:'Durasi kuis minimal 1 menit.',data:null};
-    var link=String(quiz.LinkMateri||'').trim();if(link&&!/^https?:\/\//i.test(link))return {success:false,message:'Link materi harus diawali http:// atau https://.',data:null};
-    var subjects=getSheetDataFromSpreadsheet_(ss,'MasterMapel');if(!subjects.some(function(x){return String(x.Kode||'').trim()===String(quiz.KodeMapel).trim()&&String(x.Status||'aktif').toLowerCase()!=='nonaktif';}))return {success:false,message:'Mata pelajaran tidak ditemukan atau nonaktif.',data:null};
+    var durasi=Number(quiz.DurasiMenit);if(!isFinite(durasi)||durasi&lt;1)return {success:false,message:'Durasi kuis minimal 1 menit.',data:null};
+    var link=String(quiz.LinkMateri||'').trim();if(link&amp;&amp;!/^https?:\/\//i.test(link))return {success:false,message:'Link materi harus diawali http:// atau https://.',data:null};
+    var subjects=getSheetDataFromSpreadsheet_(ss,'MasterMapel');if(!subjects.some(function(x){return String(x.Kode||'').trim()===String(quiz.KodeMapel).trim()&amp;&amp;String(x.Status||'aktif').toLowerCase()!=='nonaktif';}))return {success:false,message:'Mata pelajaran tidak ditemukan atau nonaktif.',data:null};
     var quizId=String(quiz.ID||('KUIS-'+Date.now()+'-'+Math.floor(Math.random()*1000))).trim(),qs=ss.getSheetByName('Kuis'),ssq=ss.getSheetByName('SoalKuis');
     var qh=qs.getRange(1,1,1,qs.getLastColumn()).getValues()[0], vals=qs.getDataRange().getValues(), idix=qh.indexOf('ID');if(vals.slice(1).some(function(r){return String(r[idix]||'').trim()===quizId;}))return {success:false,message:'ID kuis sudah ada. Silakan buat ulang.',data:null};
     var qr={ID:quizId,Judul:String(quiz.Judul).trim(),KodeMapel:String(quiz.KodeMapel).trim(),Kelas:String(quiz.Kelas).trim(),JumlahSoal:questions.length,DurasiMenit:durasi,LinkMateri:link};
@@ -1168,7 +1254,7 @@ function saveInteractiveQuizResult(spreadsheetId,result) {
     if(!student)return {success:false,message:'Siswa tidak terverifikasi. Hasil kuis tidak disimpan.',data:null};
     var quizzes=getSheetDataFromSpreadsheet_(ss,'Kuis'),quizId=String(result.KuisID||'').trim(),quiz=quizzes.filter(function(x){return String(x.ID||'').trim()===quizId;})[0];
     if(!quiz)return {success:false,message:'Kuis tidak ditemukan.',data:null};
-    if(String(student.Kelas||'').trim()!==String(quiz.Kelas||'').trim() && String(quiz.Kelas||'').trim().toLowerCase()!=='semua')return {success:false,message:'Kuis bukan untuk kelas siswa ini.',data:null};
+    if(String(student.Kelas||'').trim()!==String(quiz.Kelas||'').trim() &amp;&amp; String(quiz.Kelas||'').trim().toLowerCase()!=='semua')return {success:false,message:'Kuis bukan untuk kelas siswa ini.',data:null};
     var qs=getSheetDataFromSpreadsheet_(ss,'SoalKuis').filter(function(x){return String(x.KuisID||'')===quizId;});
     var answers=result.answers||{};if(typeof answers==='string'){try{answers=JSON.parse(answers);}catch(e){answers={};}}
     var benar=0;qs.forEach(function(q){var a=String(answers[String(q.ID)]||'').trim().toUpperCase(),k=String(q.KunciJawaban||'').trim().toUpperCase();if(a===k)benar++;});
@@ -1266,14 +1352,22 @@ function saveGradesBatchAndRebuildPenilaian(body) {
   var values = sheet.getDataRange().getValues();
   var headers = values[0] || [];
   var idIdx = headers.indexOf('ID');
-  if (idIdx &lt; 0) {
-    return {success:false,message:'Kolom ID pada sheet Nilai tidak ditemukan.',data:null};
+  var nisIdx = headers.indexOf('NIS');
+  var kodeIdx = headers.indexOf('KodeMapel');
+  var jenisIdx = headers.indexOf('JenisPenilaian');
+  if (idIdx &lt; 0 || nisIdx &lt; 0 || kodeIdx &lt; 0 || jenisIdx &lt; 0) {
+    return {success:false,message:'Struktur sheet Nilai tidak lengkap. Pastikan kolom ID, NIS, KodeMapel, dan JenisPenilaian tersedia.',data:null};
   }
 
+  // Gunakan identitas nilai = NIS + KodeMapel + JenisPenilaian.
+  // Dengan cara ini nilai mapel berbeda (misalnya MTK dan IPAS) tidak saling tertukar
+  // walaupun template atau ID dari browser berbeda.
   var rowMap = {};
   for (var i=1; i&lt;values.length; i++) {
-    var existingId = String(values[i][idIdx] == null ? '' : values[i][idIdx]).trim();
-    if (existingId) rowMap[existingId] = i;
+    var existingKey = String(values[i][nisIdx] == null ? '' : values[i][nisIdx]).trim() + '|' +
+      String(values[i][kodeIdx] == null ? '' : values[i][kodeIdx]).trim().toLowerCase() + '|' +
+      String(values[i][jenisIdx] == null ? '' : values[i][jenisIdx]).trim().toLowerCase();
+    if (existingKey !== '||') rowMap[existingKey] = i;
   }
 
   var nowDate = new Date();
@@ -1281,54 +1375,70 @@ function saveGradesBatchAndRebuildPenilaian(body) {
   var inserted = 0;
   var invalid = [];
   var appendRows = [];
+  var mapelStats = {};
 
   records.forEach(function(record, index) {
     record = record || {};
     var nilai = Number(record.Nilai);
+    var nis = String(record.NIS == null ? '' : record.NIS).trim();
+    var kodeMapel = String(record.KodeMapel == null ? '' : record.KodeMapel).trim();
+    var jenisPenilaian = String(record.JenisPenilaian == null ? '' : record.JenisPenilaian).trim();
 
-    if (isNaN(nilai) || nilai &lt; 0 || nilai &gt; 100) {
+    if (!nis || !kodeMapel || !jenisPenilaian || isNaN(nilai) || nilai &lt; 0 || nilai &gt; 100) {
       invalid.push(index + 1);
       return;
     }
 
-    record.ID = String(record.ID || ('NIL-' + Date.now() + '-' + index)).trim();
+    record.NIS = nis;
+    record.KodeMapel = kodeMapel;
+    record.JenisPenilaian = jenisPenilaian;
+    record.Nilai = nilai;
+    record.ID = String(record.ID || ('NIL-' + nis + '-' + kodeMapel + '-' + jenisPenilaian)).trim()
+      .replace(/[^a-zA-Z0-9_-]/g,'_');
     if (!record.Tanggal) record.Tanggal = nowDate;
 
+    var key = nis + '|' + kodeMapel.toLowerCase() + '|' + jenisPenilaian.toLowerCase();
     var rowData = headers.map(function(h) {
       return record[h] !== undefined ? record[h] : '';
     });
 
-    if (rowMap[record.ID] !== undefined) {
-      values[rowMap[record.ID]] = rowData;
+    var wasUpdated = rowMap[key] !== undefined;
+    if (wasUpdated) {
+      values[rowMap[key]] = rowData;
       updated++;
     } else {
       appendRows.push(rowData);
+      // Tandai juga record baru agar duplikat dalam satu batch tidak membuat dua baris.
+      rowMap[key] = values.length + appendRows.length - 1;
       inserted++;
     }
+
+    var statKey = kodeMapel;
+    if (!mapelStats[statKey]) mapelStats[statKey] = {updated:0, inserted:0};
+    if (wasUpdated) mapelStats[statKey].updated++;
+    else mapelStats[statKey].inserted++;
   });
 
   if (values.length &gt; 1) {
-    sheet.getRange(2, 1, values.length - 1, headers.length)
-      .setValues(values.slice(1));
+    sheet.getRange(2, 1, values.length - 1, headers.length).setValues(values.slice(1));
   }
-
   if (appendRows.length) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length)
-      .setValues(appendRows);
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length).setValues(appendRows);
   }
+  SpreadsheetApp.flush();
 
   var rebuilt = rebuildPenilaianSheet();
-
   return {
     success: invalid.length === 0,
     message: invalid.length
       ? ('Sebagian nilai gagal disimpan. Baris tidak valid: ' + invalid.join(', ') + '.')
-      : ('Sebanyak ' + (updated + inserted) + ' nilai berhasil disimpan sekaligus.'),
+      : ('Sebanyak ' + (updated + inserted) + ' nilai berhasil disimpan sekaligus ke sheet Nilai.'),
     data: {
       saved: updated + inserted,
       updated: updated,
       inserted: inserted,
       invalid: invalid,
+      mapelStats: mapelStats,
       rebuild: rebuilt
     }
   };
@@ -1589,7 +1699,7 @@ function callHaloOpenAI_(instruction, context) {
     'Untuk input nilai: NIS dan Nilai wajib. Jika jenis penilaian belum jelas, tanyakan. Jika mapel belum jelas, tanyakan; jangan menebak.',
     'Nilai harus angka 0 sampai 100. Pahami angka Bahasa Indonesia seperti delapan puluh=80, sembilan puluh lima=95, seratus=100.',
     'Jika pengguna mengucapkan "absen 1" sebagai jenis penilaian, pertahankan sebagai "Absen 1".',
-    'Jika guru meminta membuat gambar, gunakan action generate_image dan isi prompt gambar yang lengkap dalam Bahasa Indonesia; jangan membuat gambar untuk pertanyaan biasa.'
+    'Jika guru meminta membuat gambar, gunakan action generate_image dan isi prompt gambar yang lengkap dalam Bahasa Indonesia; jangan membuat gambar untuk pertanyaan biasa.',
     'Jawaban reply singkat dan natural dalam Bahasa Indonesia.'
   ].join('\n');
   var payload = {
@@ -1667,7 +1777,7 @@ function generateAiImage(body) {
   var prompt = String(body.prompt || '').trim();
   if (role !== 'guru' || !validateGuruForAI_(username)) return {success:false, message:'Pembuatan gambar hanya dapat digunakan oleh Guru aktif.', data:null};
   if (!prompt) return {success:false, message:'Deskripsi gambar wajib diisi.', data:null};
-  if (prompt.length > 2000) return {success:false, message:'Deskripsi gambar maksimal 2000 karakter.', data:null};
+  if (prompt.length &gt; 2000) return {success:false, message:'Deskripsi gambar maksimal 2000 karakter.', data:null};
   if (!consumeHaloQuota_(username)) return {success:false, message:'Kuota AI hari ini sudah habis. Batas harian: ' + HALO_AI_DAILY_LIMIT + ' permintaan.', data:null};
   var apiKey = getOpenAiApiKey_();
   if (!apiKey) return {success:false, message:'API Key OpenAI belum diatur. Simpan API Key terlebih dahulu.', data:null};
@@ -1678,8 +1788,8 @@ function generateAiImage(body) {
       payload:JSON.stringify(payload), muteHttpExceptions:true
     });
     var code=response.getResponseCode(), text=response.getContentText();
-    if(code<200 || code>=300) throw new Error('OpenAI Image API error '+code+': '+text.substring(0,500));
-    var json=JSON.parse(text), item=(json.data&&json.data[0])||{};
+    if(code&lt;200 || code&gt;=300) throw new Error('OpenAI Image API error '+code+': '+text.substring(0,500));
+    var json=JSON.parse(text), item=(json.data&amp;&amp;json.data[0])||{};
     if(item.b64_json) return {success:true,message:'Gambar berhasil dibuat.',data:{dataUrl:'data:image/png;base64,'+item.b64_json, prompt:prompt}};
     if(item.url) return {success:true,message:'Gambar berhasil dibuat.',data:{url:item.url, prompt:prompt}};
     throw new Error('OpenAI tidak mengembalikan gambar.');
@@ -1802,6 +1912,31 @@ function clearAllData() {
       mode: 'offline',
       isOnline: false
     };
+
+    // Pulihkan konfigurasi lama agar Kode Guru (Spreadsheet ID) dan
+    // APPSCRIPT_URL tetap otomatis terisi seperti versi sebelumnya.
+    try {
+      if (!String(config.spreadsheetId || '').trim()) {
+        const legacyId = String(localStorage.getItem(LEGACY_SPREADSHEET_KEY) || '').trim();
+        if (legacyId) config.spreadsheetId = legacyId;
+      }
+      if (!String(config.scriptUrl || '').trim()) {
+        const legacyUrl = String(localStorage.getItem(LEGACY_SCRIPT_URL_KEY) || '').trim();
+        if (legacyUrl) config.scriptUrl = legacyUrl;
+      }
+      if (config.spreadsheetId || config.scriptUrl) {
+        localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(config));
+      }
+    } catch (e) {}
+    // Simpan juga Spreadsheet ID ke key lama agar laporan.html dan file lama tetap dapat membacanya.
+    try {
+      if (String(config.spreadsheetId || '').trim()) {
+        localStorage.setItem(LEGACY_SPREADSHEET_KEY, String(config.spreadsheetId).trim());
+      }
+      if (String(config.scriptUrl || '').trim()) {
+        localStorage.setItem(LEGACY_SCRIPT_URL_KEY, String(config.scriptUrl).trim());
+      }
+    } catch (e) {}
     // Perbaikan kompatibilitas: versi sebelumnya pernah menyimpan deployment URL dengan 1 karakter ID yang keliru.
     // Jika URL lama tersebut masih ada di localStorage, otomatis gunakan deployment yang benar.
     const CORRECT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyNnoAxaaXHZGhjNdgADtD4LRluO3i6r1r3OJjWYulHfJgAkSFM8fCOe0uwTlBxVop2HQ/exec';
@@ -1936,7 +2071,14 @@ function clearAllData() {
 
         const data = json.data || {};
         const foundSheetId = String(data.SPREADSHEET_ID || id).trim();
-        const foundUrl = normalizeAppsScriptUrl(data.APPSCRIPT_URL || '');
+        let foundUrl = normalizeAppsScriptUrl(data.APPSCRIPT_URL || '');
+        // Jika Config database lama belum memiliki APPSCRIPT_URL, gunakan
+        // URL yang sebelumnya sudah tersimpan di browser.
+        if (!foundUrl) {
+          try {
+            foundUrl = normalizeAppsScriptUrl(localStorage.getItem(LEGACY_SCRIPT_URL_KEY) || '');
+          } catch (e) {}
+        }
         if (!foundUrl) {
           throw new Error('APPSCRIPT_URL tidak ditemukan di sheet Config.');
         }
@@ -2005,7 +2147,7 @@ function clearAllData() {
       // Request baca data dijalankan di background agar UI tidak terasa "terkunci".
       // Operasi simpan/hapus/login tetap memakai loader seperti sebelumnya.
       const silentReadActions = [
-        'getStudents','getSubjects','getAttendance','getGrades',
+        'getDashboardData','syncDatabase','getStudents','getSubjects','getAttendance','getGrades',
         'getAnnouncements','getGuruProfile','getMenuGuru',
         'getPenilaianConfig','getPenilaianSheet','getJournals',
         'getQuizzes','getQuizQuestions','getQuizResults',
@@ -2102,6 +2244,38 @@ function clearAllData() {
         }
         return { success:false, message:msg, data:null };
       }
+    }
+
+    // Kompatibilitas untuk deployment Apps Script lama yang belum memuat action baru.
+    // Jika getDashboardData belum ter-deploy, dashboard tetap membaca data melalui
+    // endpoint lama yang sudah tersedia sehingga tidak menjadi kosong/0.
+    async function getDashboardDataCompat() {
+      const direct = await apiCall('getDashboardData');
+      if (direct && direct.success && direct.data) return direct;
+
+      const [studentsRes, subjectsRes, attendanceRes, gradesRes, quizzesRes, quizResultsRes] = await Promise.all([
+        apiCall('getStudents', {}, { kelas: currentUser && currentUser.Kelas || '' }),
+        apiCall('getSubjects'),
+        apiCall('getAttendance'),
+        apiCall('getGrades'),
+        apiCall('getQuizzes'),
+        apiCall('getQuizResults')
+      ]);
+
+      const pick = (res) => res && res.success && Array.isArray(res.data) ? res.data : [];
+      return {
+        success: true,
+        message: 'Data dashboard dimuat melalui kompatibilitas deployment lama.',
+        data: {
+          students: pick(studentsRes),
+          subjects: pick(subjectsRes),
+          attendance: pick(attendanceRes),
+          grades: pick(gradesRes),
+          quizzes: pick(quizzesRes),
+          quizResults: pick(quizResultsRes),
+          activities: []
+        }
+      };
     }
 
     function handleMockApi(action, params, body) {
@@ -2485,10 +2659,25 @@ function clearAllData() {
 
     function openCustomGuruMenu(menu) {
       if (!menu || String(menu.Status || 'aktif').toLowerCase() !== 'aktif') return;
-      const target = normalizeCustomMenuTarget(menu);
+      let target = normalizeCustomMenuTarget(menu);
       if (!target || /^(javascript|data|vbscript):/i.test(target)) {
         showToast('Target menu tidak valid atau tidak aman.', 'error'); return;
       }
+
+      // Khusus laporan.html: teruskan konfigurasi database dari index.html
+      // agar laporan.html tetap berjalan tanpa mengubah file laporan.html.
+      try {
+        const reportUrl = new URL(target, window.location.href);
+        if (/\/laporan\.html$/i.test(reportUrl.pathname)) {
+          if (String(config.spreadsheetId || '').trim()) {
+            reportUrl.searchParams.set('db', String(config.spreadsheetId).trim());
+          }
+          if (String(config.scriptUrl || '').trim()) {
+            reportUrl.searchParams.set('api', String(config.scriptUrl).trim());
+          }
+          target = reportUrl.href;
+        }
+      } catch (e) {}
       document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('bg-indigo-50','text-indigo-600'));
       const safeId = String(menu.ID || '').replace(/[^a-zA-Z0-9_-]/g,'');
       const btn = document.getElementById('nav-custom-' + safeId);
@@ -3157,12 +3346,12 @@ function clearAllData() {
         if (role !== 'guru') {
           showToast('Mode Offline hanya tersedia untuk login Guru. Hubungkan Spreadsheet untuk login Siswa.', 'warning');
           const loginDbInput = document.getElementById('login-db-code');
-      if (loginDbInput && savedSpreadsheetId) {
-        loginDbInput.value = savedSpreadsheetId;
-        persistGuruSpreadsheetId(savedSpreadsheetId);
-      }
-
-      selectLoginRole('guru');
+          const savedSpreadsheetId = getSavedGuruSpreadsheetId();
+          if (loginDbInput && savedSpreadsheetId) {
+            loginDbInput.value = savedSpreadsheetId;
+            persistGuruSpreadsheetId(savedSpreadsheetId);
+          }
+          selectLoginRole('guru');
           return;
         }
         if (username.toLowerCase() !== 'guru' || password !== '11223344') {
@@ -3332,33 +3521,59 @@ function clearAllData() {
         return;
       }
 
-      const recordsBySheet = collectOfflineSyncData();
-      const total = Object.keys(recordsBySheet).reduce(
-        (sum, key) => sum + (Array.isArray(recordsBySheet[key]) ? recordsBySheet[key].length : 0), 0
-      );
-
-      if (!total) {
-        showToast('Tidak ada data offline yang perlu disinkronkan.', 'info');
-        return;
-      }
-
-      if (!confirm('Kirim ' + total + ' data offline ke Google Spreadsheet sekarang?')) return;
-
       showLoading(true);
+      const startedAt = Date.now();
       try {
-        const res = await apiCall('syncOfflineData', {}, { recordsBySheet });
-        if (res && res.success) {
-          // Setelah berhasil, data siswa lokal dibersihkan agar tidak terkirim ulang.
-          if (recordsBySheet.Siswa) {
-            localStorage.removeItem('edusmart_offline_students');
+        // Tetap pertahankan mekanisme offline lama jika ada data yang tertunda.
+        const recordsBySheet = collectOfflineSyncData();
+        const totalOffline = Object.keys(recordsBySheet).reduce(
+          (sum, key) => sum + (Array.isArray(recordsBySheet[key]) ? recordsBySheet[key].length : 0), 0
+        );
+
+        if (totalOffline) {
+          const ok = confirm('Ada ' + totalOffline + ' data offline yang tertunda. Kirim ke Spreadsheet sebelum membaca database terbaru?');
+          if (ok) {
+            const uploadRes = await apiCall('syncOfflineData', {}, { recordsBySheet });
+            if (!uploadRes || !uploadRes.success) {
+              showToast('Data offline gagal dikirim: ' + ((uploadRes && uploadRes.message) || 'Respons tidak valid.'), 'error');
+              return;
+            }
+            if (recordsBySheet.Siswa) localStorage.removeItem('edusmart_offline_students');
           }
-          showToast('✓ ' + (res.message || 'Sinkronisasi berhasil.'), 'success');
-          if (currentUser && String(currentUser.Role || '').toLowerCase() === 'guru') {
-            renderSidebarNav();
-          }
-        } else {
-          showToast('Sinkronisasi gagal: ' + ((res && res.message) || 'Respons tidak valid.'), 'error');
         }
+
+        // Fungsi utama Sinkron sekarang adalah MEMBACA ulang database.
+        // Data password/Users tidak pernah dikirim ke browser.
+        const res = await apiCall('syncDatabase', {}, {
+          username: currentUser && currentUser.Username || '',
+          role: currentUser && currentUser.Role || '',
+          spreadsheetId: config.spreadsheetId
+        });
+        if (!res || !res.success) {
+          showToast('Sinkronisasi database gagal: ' + ((res && res.message) || 'Respons tidak valid.'), 'error');
+          return;
+        }
+
+        window.__EDUSMART_SYNC_SNAPSHOT = res.data || {};
+        window.__EDUSMART_LAST_SYNC = Date.now();
+
+        // Setelah database dibaca, render ulang menu yang sedang aktif.
+        const activeView = currentUser && String(currentUser.Role || '').toLowerCase() === 'guru'
+          ? (document.getElementById('nav-dashboard') && document.getElementById('nav-dashboard').classList.contains('bg-indigo-50') ? 'dashboard' : null)
+          : (document.getElementById('nav-dashboard-siswa') && document.getElementById('nav-dashboard-siswa').classList.contains('bg-indigo-50') ? 'dashboard-siswa' : null);
+        if (activeView) {
+          navigateTo(activeView);
+        } else {
+          // Untuk menu lain, muat ulang view aktif berdasarkan tombol yang sedang dipilih.
+          const activeBtn = document.querySelector('.nav-btn.bg-indigo-50');
+          if (activeBtn && activeBtn.id) {
+            const id = activeBtn.id.replace(/^nav-/, '').replace(/-siswa$/, '');
+            if (id && typeof navigateTo === 'function') navigateTo(id);
+          }
+        }
+
+        const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+        showToast('✓ Database berhasil disinkronkan. Data aplikasi diperbarui (' + seconds + ' detik).', 'success');
       } catch (e) {
         showToast('Sinkronisasi gagal: ' + (e.message || e), 'error');
       } finally {
@@ -3593,6 +3808,18 @@ function clearAllData() {
             </div>
           </div>
 
+          <!-- Statistik Aktivitas Terbaru -->
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-indigo-600"></i> Aktivitas Terbaru</h3>
+                <p class="text-[10px] text-slate-400">5 aktivitas terakhir yang tercatat di database.</p>
+              </div>
+              <span id="activity-stats-count" class="text-[10px] bg-indigo-50 text-indigo-700 px-2.5 py-1.5 rounded-full font-bold">0 aktivitas</span>
+            </div>
+            <div id="activity-stats-content" class="space-y-2"><div class="text-xs text-slate-400 text-center py-5">Memuat aktivitas...</div></div>
+          </div>
+
           <!-- Dynamic Charts Section -->
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
@@ -3628,18 +3855,17 @@ function clearAllData() {
         </div>
       `;
 
-      // Load Stats & Charts
-      const [studentsRes, subjectsRes, attendanceRes, gradesRes, quizzesRes, quizResultsRes] = await Promise.all([
-        apiCall('getStudents'), apiCall('getSubjects'), apiCall('getAttendance'), apiCall('getGrades'),
-        apiCall('getQuizzes'), apiCall('getQuizResults')
-      ]);
-
-      const allStudents = Array.isArray(studentsRes.data) ? studentsRes.data : [];
-      const allSubjects = Array.isArray(subjectsRes.data) ? subjectsRes.data : [];
-      const attendance = Array.isArray(attendanceRes.data) ? attendanceRes.data : [];
-      const allGrades = Array.isArray(gradesRes.data) ? gradesRes.data : [];
-      const allQuizzes = Array.isArray(quizzesRes.data) ? quizzesRes.data : [];
-      const allQuizResults = Array.isArray(quizResultsRes.data) ? quizResultsRes.data : [];
+      // Load Stats & Charts. Semua data dashboard diminta dalam SATU request agar
+      // tidak terjadi beberapa request paralel yang saling mengantre di Apps Script.
+      const dashboardRes = await getDashboardDataCompat();
+      const dashboardData = dashboardRes && dashboardRes.success && dashboardRes.data ? dashboardRes.data : {};
+      const allStudents = Array.isArray(dashboardData.students) ? dashboardData.students : [];
+      const allSubjects = Array.isArray(dashboardData.subjects) ? dashboardData.subjects : [];
+      const attendance = Array.isArray(dashboardData.attendance) ? dashboardData.attendance : [];
+      const allGrades = Array.isArray(dashboardData.grades) ? dashboardData.grades : [];
+      const allQuizzes = Array.isArray(dashboardData.quizzes) ? dashboardData.quizzes : [];
+      const allQuizResults = Array.isArray(dashboardData.quizResults) ? dashboardData.quizResults : [];
+      const allActivities = Array.isArray(dashboardData.activities) ? dashboardData.activities : [];
       const teacherClass = String(currentUser && currentUser.Kelas || '').trim();
 
       // Dashboard Guru difokuskan pada kelas yang sedang ditangani guru.
@@ -3740,8 +3966,35 @@ function clearAllData() {
       const absDateEl = document.getElementById('stat-absensi-date');
       if (absDateEl) absDateEl.innerText = new Date().toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
 
-      const numericGrades = grades.map(g => Number(g.Nilai)).filter(Number.isFinite);
-      const avg = numericGrades.length ? (numericGrades.reduce((a, b) => a + b, 0) / numericGrades.length).toFixed(1) : '0';
+      // RATA-RATA NILAI KELAS: setiap siswa memiliki bobot yang sama.
+      // Langkah: rata-rata setiap mapel untuk setiap siswa -> rata-rata mapel
+      // per siswa -> rata-rata seluruh siswa. Jadi banyaknya komponen penilaian
+      // pada satu mapel tidak membuat siswa tersebut berbobot lebih besar.
+      const overallStudentAverages = [];
+      students.forEach(s => {
+        const nis = String(s.NIS || '').trim();
+        if (!nis) return;
+        const bySubject = {};
+        grades.forEach(g => {
+          if (String(g.NIS || '').trim() !== nis) return;
+          const code = String(g.KodeMapel || '').trim();
+          const value = Number(g.Nilai);
+          if (!code || !Number.isFinite(value)) return;
+          if (!bySubject[code]) bySubject[code] = [];
+          bySubject[code].push(value);
+        });
+        const subjectAvgs = Object.values(bySubject)
+          .filter(arr => arr.length)
+          .map(arr => arr.reduce((a,b) => a+b, 0) / arr.length);
+        if (subjectAvgs.length) {
+          overallStudentAverages.push(
+            subjectAvgs.reduce((a,b) => a+b, 0) / subjectAvgs.length
+          );
+        }
+      });
+      const avg = overallStudentAverages.length
+        ? (overallStudentAverages.reduce((a,b) => a+b, 0) / overallStudentAverages.length).toFixed(1)
+        : '0';
       document.getElementById('stat-nilai-avg').innerText = avg;
       refreshGuruDashboardIdentity();
 
@@ -4004,6 +4257,29 @@ function clearAllData() {
             </div>
           `;
         }).join('');
+      }
+
+      // ==========================
+      // AKTIVITAS TERBARU
+      // ==========================
+      const activityStatsContent = document.getElementById('activity-stats-content');
+      const activityStatsCount = document.getElementById('activity-stats-count');
+      const recentActivities = allActivities.slice().sort((a,b) =>
+        (new Date(b.Waktu || 0).getTime() || 0) - (new Date(a.Waktu || 0).getTime() || 0)
+      ).slice(0, 5);
+      if (activityStatsCount) activityStatsCount.textContent = recentActivities.length + ' aktivitas';
+      if (activityStatsContent) {
+        activityStatsContent.innerHTML = recentActivities.length ? recentActivities.map((item, index) => {
+          const d = item.Waktu ? new Date(item.Waktu) : null;
+          const waktu = d && !isNaN(d.getTime()) ? d.toLocaleString('id-ID', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '-';
+          return `<div class="flex items-center gap-3 p-3 rounded-xl ${index === 0 ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-100'}">
+            <div class="w-9 h-9 rounded-xl bg-white text-indigo-600 flex items-center justify-center"><i class="fa-solid fa-user-clock"></i></div>
+            <div class="flex-1 min-w-0">
+              <div class="text-xs font-bold text-slate-700 truncate">${escapeHtml(String(item.Aktivitas || 'Aktivitas'))}</div>
+              <div class="text-[10px] text-slate-500 truncate">${escapeHtml(String(item.User || 'Sistem'))} • ${escapeHtml(waktu)}</div>
+            </div>
+          </div>`;
+        }).join('') : '<div class="text-xs text-slate-400 text-center py-5">Belum ada aktivitas tercatat.</div>';
       }
     }
 
@@ -5021,17 +5297,16 @@ function clearAllData() {
       `;
 
       try {
-        const [gradesRes, attendanceRes, studentsRes, subjectsRes] = await Promise.all([
-          apiCall('getGrades'),
-          apiCall('getAttendance'),
-          apiCall('getStudents'),
-          apiCall('getSubjects')
-        ]);
-
-        const grades = Array.isArray(gradesRes.data) ? gradesRes.data : [];
-        const attendance = Array.isArray(attendanceRes.data) ? attendanceRes.data : [];
-        const students = Array.isArray(studentsRes.data) ? studentsRes.data : [];
-        const subjects = Array.isArray(subjectsRes.data) ? subjectsRes.data : [];
+        // Dashboard siswa menggunakan satu sumber data dashboard agar nilai yang
+        // baru disimpan guru langsung terbaca bersama data statistik lainnya.
+        // Ini juga menghindari beberapa request paralel yang dapat selesai pada
+        // waktu berbeda saat Apps Script sedang sibuk.
+        const dashboardRes = await getDashboardDataCompat();
+        const dashboardData = dashboardRes && dashboardRes.success && dashboardRes.data ? dashboardRes.data : {};
+        const grades = Array.isArray(dashboardData.grades) ? dashboardData.grades : [];
+        const attendance = Array.isArray(dashboardData.attendance) ? dashboardData.attendance : [];
+        const students = Array.isArray(dashboardData.students) ? dashboardData.students : [];
+        const subjects = Array.isArray(dashboardData.subjects) ? dashboardData.subjects : [];
 
         // Nilai siswa yang sedang login.
         const myGrades = grades.filter(g => String(g.NIS || '').trim() === nis);
@@ -5161,8 +5436,11 @@ function clearAllData() {
           <div id="siswa-nilai-container" class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">Memuat nilai...</div>
         </div>
       `;
-      const res = await apiCall('getGrades');
-      const list = (res.data || []).filter(n => n.NIS == currentUser.NIS || !n.NIS);
+      // Gunakan sumber dashboard yang sama agar halaman Nilai Saya juga membaca
+      // data Nilai terbaru setelah guru menyimpan nilai.
+      const res = await apiCall('getDashboardData');
+      const dashboardData = res && res.success && res.data ? res.data : {};
+      const list = (dashboardData.grades || []).filter(n => n.NIS == currentUser.NIS || !n.NIS);
       document.getElementById('siswa-nilai-container').innerHTML = list.length ? list.map(n => `
         <div class="flex justify-between items-center py-2 border-b text-xs">
           <div><b class="text-indigo-600">${n.KodeMapel}</b> - ${n.JenisPenilaian}</div>
@@ -5688,12 +5966,14 @@ function clearAllData() {
     function openExcelImportModal(type) {
       const cfg = EXCEL_CONFIG[type];
       if (!cfg) return;
-      const required = cfg.required.map(h => `<span class="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg">${h}</span>`).join(' ');
+      const required = type === 'nilai'
+        ? ['Kelas','KodeMapel','NIS','NamaSiswa','Tanggal','Komponen Nilai (sesuai mapel)'].map(h => `<span class="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg">${h}</span>`).join(' ')
+        : cfg.required.map(h => `<span class="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg">${h}</span>`).join(' ');
       openModal(`
         <div class="space-y-4">
           <div class="border-b pb-3">
             <h3 class="text-xl font-bold text-slate-800">${cfg.title}</h3>
-            <p class="text-xs text-slate-500 mt-1">Unduh template, isi data, lalu upload kembali dalam format .xlsx atau .xls.</p>
+            <p class="text-xs text-slate-500 mt-1">${type === 'nilai' ? 'Template Nilai dibuat per mata pelajaran: satu siswa satu baris, komponen penilaian menjadi kolom. Isi nilai yang diperlukan lalu upload kembali.' : 'Unduh template, isi data, lalu upload kembali dalam format .xlsx atau .xls.'}</p>
           </div>
           <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
             <b>Kolom wajib:</b><div class="flex flex-wrap gap-1.5 mt-2">${required}</div>
@@ -5724,15 +6004,20 @@ function clearAllData() {
           const headerMatrix = XLSX.utils.sheet_to_json(firstSheet, {header:1, defval:'', raw:false});
           const rawHeaders = (headerMatrix[0] || []).map(h => String(h || '').trim()).filter(Boolean);
           const baseHeaders = ['ID','Kelas','KodeMapel','NIS','NamaSiswa','Tanggal'];
-          const kodeMapel = String((rows[0] && rows[0].KodeMapel) || '').trim();
+          const headerLookup = {};
+          rawHeaders.forEach(h => { headerLookup[h.toLowerCase()] = h; });
+          const kodeHeader = headerLookup['kodemapel'] || 'KodeMapel';
+          const kodeMapel = String((rows[0] && rows[0][kodeHeader]) || '').trim();
           const configRes = await apiCall('getPenilaianConfig');
           const configs = (configRes && configRes.success ? (configRes.data || []) : [])
             .filter(c => String(c.KodeMapel || '').trim() === kodeMapel && String(c.Status || 'aktif').toLowerCase() !== 'nonaktif')
             .sort((a,b) => Number(a.Urutan || 0) - Number(b.Urutan || 0));
           const configuredComponents = [...new Set(configs.map(c => String(c.Komponen || '').trim()).filter(Boolean))];
-          const detectedComponents = rawHeaders.filter(h => !baseHeaders.includes(h));
+          const configuredLookup = {};
+          configuredComponents.forEach(c => { configuredLookup[c.toLowerCase()] = c; });
+          const detectedComponents = rawHeaders.filter(h => !baseHeaders.some(b => b.toLowerCase() === h.toLowerCase()));
           const components = configuredComponents.length
-            ? detectedComponents.filter(h => configuredComponents.includes(h))
+            ? detectedComponents.filter(h => configuredLookup[h.toLowerCase()])
             : detectedComponents;
           normalized = [];
           rows.forEach((row, ri) => {
@@ -5745,7 +6030,8 @@ function clearAllData() {
               Tanggal: String(row.Tanggal || '').trim()
             };
             components.forEach(component => {
-              const value = String(row[component] == null ? '' : row[component]).trim();
+              const actualHeader = headerLookup[component.toLowerCase()] || component;
+              const value = String(row[actualHeader] == null ? '' : row[actualHeader]).trim();
               if (value === '') return;
               normalized.push({
                 ID: baseId ? `${baseId}-${component}`.replace(/[^a-zA-Z0-9_-]/g,'_') : `NIL-${Date.now()}-${ri}-${Math.random().toString(36).slice(2,8)}`,
