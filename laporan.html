@@ -341,16 +341,16 @@ async function loadData(){
 
   showLoading(true,'Membaca HasilKuis...');
   let results=[];
-  try{
-    if(state.apiUrl){
-      const r=await rpc('getQuizResults');
-      if(r?.success && Array.isArray(r.data))results=r.data;
-    }
-  }catch(e){}
-
-  // Fallback: baca langsung HasilKuis bila tersedia.
+  // HasilKuis dibaca langsung dari spreadsheet terlebih dahulu agar seluruh
+  // baris hasil tersedia. Apps Script hanya menjadi fallback.
+  try{results=gvizRows(await gvizRequest('HasilKuis'))}catch(e){}
   if(!results.length){
-    try{results=gvizRows(await gvizRequest('HasilKuis'))}catch(e){}
+    try{
+      if(state.apiUrl){
+        const r=await rpc('getQuizResults');
+        if(r?.success && Array.isArray(r.data))results=r.data;
+      }
+    }catch(e){}
   }
 
   state.results=results.map(r=>({
@@ -363,7 +363,7 @@ async function loadData(){
     WaktuMulai:field(r,['WaktuMulai','Waktu Mulai'],''),
     WaktuSelesai:field(r,['WaktuSelesai','Waktu Selesai'],''),
     Status:String(field(r,['Status','status'],'')).trim(),
-    KuisID:String(field(r,['KuisID','Kuis ID','QuizID','Quiz Id'],'')).trim(),
+    KuisID:String(field(r,['KuisID','Kuis ID','IDKuis','ID Kuis','QuizID','Quiz Id','Quiz ID','KodeKuis','Kode Kuis'],'')).trim(),
     raw:r
   })).filter(r=>r.NIS||r.KuisID);
 
@@ -429,7 +429,9 @@ function selectedQuizIds(){
 }
 
 function latestResultFor(nis,quizId){
-  const rows=state.results.filter(r=>r.NIS===nis&&r.KuisID===quizId);
+  const keyNis=String(nis||'').trim();
+  const keyQuiz=String(quizId||'').trim();
+  const rows=state.results.filter(r=>String(r.NIS||'').trim()===keyNis&&String(r.KuisID||'').trim()===keyQuiz);
   if(!rows.length)return null;
   return rows.sort((a,b)=>{
     const ta=Math.max(dateValue(a.WaktuSelesai),dateValue(a.Tanggal));
