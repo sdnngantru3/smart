@@ -325,11 +325,15 @@ function statusNorm(v){return String(v||'').trim().toLowerCase()}
 
 async function loadData(){
   showLoading(true,'Membaca data siswa...');
-  let ds;
-  try{
-    ds=gvizRows(await gvizRequest('Siswa'));
-  }catch(e){
-    throw Error('Sheet Siswa tidak dapat dibaca. Pastikan nama sheet adalah Siswa dan spreadsheet dapat dibaca oleh aplikasi.');
+  let ds=[];
+  // Data siswa mengikuti database EduSmart. Prioritaskan Siswa, lalu
+  // gunakan DataSiswa bila sheet Siswa tidak tersedia/kosong.
+  try{ds=gvizRows(await gvizRequest('Siswa'))}catch(e){}
+  if(!ds.length){
+    try{ds=gvizRows(await gvizRequest('DataSiswa'))}catch(e){}
+  }
+  if(!ds.length){
+    throw Error('Data siswa tidak dapat dibaca. Pastikan sheet Siswa atau DataSiswa tersedia dan dapat dibaca oleh aplikasi.');
   }
 
   state.students=ds.map(r=>({
