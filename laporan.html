@@ -390,14 +390,19 @@ function quizLabel(id){
 }
 
 function uniqueQuizList(){
-  const map=new Map();
-  state.results.forEach(r=>{
-    if(!r.KuisID)return;
-    const old=map.get(r.KuisID);
-    const scoreDate=Math.max(dateValue(r.WaktuSelesai),dateValue(r.Tanggal));
-    if(!old||scoreDate>old.sortDate)map.set(r.KuisID,{id:r.KuisID,sortDate:scoreDate});
+  // Daftar/filter kuis HARUS berasal dari sheet Kuis, bukan dari siswa
+  // yang terakhir mengerjakan HasilKuis.
+  return state.quizzes.map((q,index)=>({
+    id:String(q.ID||'').trim(),
+    Judul:q.Judul||'',
+    Kelas:q.Kelas||'',
+    KodeMapel:q.KodeMapel||'',
+    sortDate:dateValue(q.Tanggal)||0,
+    index
+  })).filter(q=>q.id).sort((a,b)=>{
+    if(a.sortDate!==b.sortDate)return b.sortDate-a.sortDate;
+    return b.index-a.index;
   });
-  return [...map.values()].sort((a,b)=>b.sortDate-a.sortDate);
 }
 
 function latestQuizId(){
