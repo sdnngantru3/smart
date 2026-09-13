@@ -510,7 +510,6 @@
                         const namaSiswa = siswaMap[siswaId] || siswaId || 'Tanpa Nama';
                         const nilai = parseFloat(r[hkNilaiColIdx]) || 0;
 
-                        // Status dari database (mis. "Selesai")
                         let statusFromDb = String(r[hkStatusColIdx] || '').trim();
                         if (!statusFromDb) {
                             statusFromDb = nilai >= PASSING_SCORE ? 'Selesai' : 'Remedial';
@@ -621,7 +620,6 @@
             const avg = (totalNilai / total).toFixed(1);
             const max = Math.max(...processedTableData.map(d => d.nilai));
 
-            // Persentase Selesai berdasarkan nilai >= PASSING_SCORE
             const selesaiCount = processedTableData.filter(d => d.nilai >= PASSING_SCORE).length;
             const persenSelesai = ((selesaiCount / total) * 100).toFixed(0);
 
@@ -787,7 +785,6 @@
             const max = total > 0 ? Math.max(...processedTableData.map(d => d.nilai)) : 0;
             const min = total > 0 ? Math.min(...processedTableData.map(d => d.nilai)) : 0;
 
-            // Selesai berdasarkan nilai >= PASSING_SCORE
             const selesaiCount = processedTableData.filter(d => d.nilai >= PASSING_SCORE).length;
             const remedialCount = total - selesaiCount;
 
@@ -881,15 +878,16 @@
                 console.warn('Tanda tangan tidak dapat dimuat:', e.message);
             }
 
-            // Blok TTD align center
+            // Blok TTD: teks rata KIRI, gambar di CENTER
             const ttdBlockWidth = 80;
-            const ttdBlockX = pageWidth - marginRight - ttdBlockWidth;
+            const ttdBlockX = pageWidth - marginRight - ttdBlockWidth; // 118mm
             const ttdCenterX = ttdBlockX + (ttdBlockWidth / 2);
 
             doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');
-            doc.text('Mengetahui,', ttdCenterX, finalY, { align: 'center' });
-            doc.text('Guru Mata Pelajaran', ttdCenterX, finalY + 5, { align: 'center' });
+            // ✅ Teks rata kiri
+            doc.text('Mengetahui,', ttdBlockX, finalY);
+            doc.text('Guru Mata Pelajaran', ttdBlockX, finalY + 5);
 
             if (ttdData) {
                 const maxTtdWidth = 40;
@@ -899,6 +897,7 @@
                 const ratio = Math.min(maxTtdWidth / imgW, maxTtdHeight / imgH);
                 imgW = imgW * ratio;
                 imgH = imgH * ratio;
+                // ✅ Gambar tetap center di dalam blok
                 const imgX = ttdCenterX - (imgW / 2);
                 const imgY = finalY + 8;
                 try {
@@ -909,12 +908,13 @@
                 finalY = finalY + 28;
             }
 
+            // ✅ Nama & NIP rata kiri
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(9);
-            doc.text(teacherConfig.nama, ttdCenterX, finalY + 3, { align: 'center' });
+            doc.text(teacherConfig.nama, ttdBlockX, finalY + 3);
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(8);
-            doc.text(`NIP. ${teacherConfig.nip}`, ttdCenterX, finalY + 8, { align: 'center' });
+            doc.text(`NIP. ${teacherConfig.nip}`, ttdBlockX, finalY + 8);
 
             doc.save(`Hasil_Kuis_${activeKuisId || 'Terbaru'}.pdf`);
         }
