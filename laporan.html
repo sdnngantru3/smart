@@ -108,7 +108,7 @@
             <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
                 <div class="p-3 bg-purple-50 text-purple-600 rounded-xl"><i data-lucide="check-circle-2" class="w-6 h-6"></i></div>
                 <div>
-                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Persentase Lulus</p>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Persentase Selesai</p>
                     <h4 id="statPersenLulus" class="text-2xl font-bold text-slate-900 mt-0.5">0%</h4>
                 </div>
             </div>
@@ -124,7 +124,6 @@
                 <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
                     <select id="filterStatus" onchange="handleFilter()" class="px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
                         <option value="ALL">Semua Status</option>
-                        <!-- Opsi diisi dinamis dari database -->
                     </select>
                     <button onclick="exportToCSV()" class="flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium transition-colors">
                         <i data-lucide="download" class="w-4 h-4"></i><span>CSV</span>
@@ -484,25 +483,22 @@
 
                 // 3. HasilKuis -> filter & dedup
                 let hkKuisIdColIdx = hasilData.cols.findIndex(c => c.includes('kuisid') || c.includes('kuis'));
-                if (hkKuisIdColIdx === -1) hkKuisIdColIdx = 1; // fallback kolom B
+                if (hkKuisIdColIdx === -1) hkKuisIdColIdx = 1;
 
                 let hkSiswaIdColIdx = hasilData.cols.findIndex(c => c.includes('nis') || c.includes('siswaid') || c.includes('siswa'));
-                if (hkSiswaIdColIdx === -1) hkSiswaIdColIdx = 2; // fallback kolom C
+                if (hkSiswaIdColIdx === -1) hkSiswaIdColIdx = 2;
 
                 let hkNilaiColIdx = hasilData.cols.findIndex(c => c.includes('nilai') || c.includes('skor') || c.includes('score'));
-                if (hkNilaiColIdx === -1) hkNilaiColIdx = 7; // fallback kolom H
+                if (hkNilaiColIdx === -1) hkNilaiColIdx = 7;
 
-                // ✅ AMBIL KOLOM STATUS LANGSUNG DARI DATABASE
                 let hkStatusColIdx = hasilData.cols.findIndex(c => c.trim() === 'status' || c.includes('status'));
-                if (hkStatusColIdx === -1) hkStatusColIdx = 12; // fallback kolom M
+                if (hkStatusColIdx === -1) hkStatusColIdx = 12;
 
-                // Waktu: prioritas WaktuSelesai, lalu Tanggal
                 let hkWaktuSelesaiColIdx = hasilData.cols.findIndex(c => c.includes('waktuselesai') || c.includes('waktu_selesai'));
                 let hkTanggalColIdx = hasilData.cols.findIndex(c => c.includes('tanggal') || c.includes('tgl') || c.includes('date'));
                 let hkWaktuColIdx = hkWaktuSelesaiColIdx !== -1 ? hkWaktuSelesaiColIdx : hkTanggalColIdx;
-                if (hkWaktuColIdx === -1) hkWaktuColIdx = 8; // fallback kolom I
+                if (hkWaktuColIdx === -1) hkWaktuColIdx = 8;
 
-                console.log('Kolom HasilKuis:', hasilData.cols);
                 console.log('Index kolom -> KuisID:', hkKuisIdColIdx, '| NIS:', hkSiswaIdColIdx, '| Nilai:', hkNilaiColIdx, '| Status:', hkStatusColIdx, '| Waktu:', hkWaktuColIdx);
 
                 const uniqueStudentsMap = new Map();
@@ -514,11 +510,10 @@
                         const namaSiswa = siswaMap[siswaId] || siswaId || 'Tanpa Nama';
                         const nilai = parseFloat(r[hkNilaiColIdx]) || 0;
 
-                        // ✅ Status diambil dari kolom Status di database
+                        // Status dari database (mis. "Selesai")
                         let statusFromDb = String(r[hkStatusColIdx] || '').trim();
                         if (!statusFromDb) {
-                            // Fallback jika kolom Status kosong
-                            statusFromDb = nilai >= PASSING_SCORE ? 'LULUS' : 'REMEDIAL';
+                            statusFromDb = nilai >= PASSING_SCORE ? 'Selesai' : 'Remedial';
                         }
 
                         let rawWaktu = hkWaktuColIdx !== -1 && r[hkWaktuColIdx] !== undefined && r[hkWaktuColIdx] !== null
@@ -533,8 +528,8 @@
                             siswaId,
                             nama: namaSiswa,
                             nilai,
-                            status: statusFromDb,        // ✅ pakai status dari database
-                            statusRaw: statusFromDb,     // simpan raw untuk filter
+                            status: statusFromDb,
+                            statusRaw: statusFromDb,
                             waktu: rawWaktu,
                             attemptCount
                         });
@@ -574,7 +569,6 @@
                 select.appendChild(opt);
             });
 
-            // Pertahankan pilihan jika masih ada
             if ([...select.options].some(o => o.value === currentVal)) {
                 select.value = currentVal;
             }
@@ -627,29 +621,26 @@
             const avg = (totalNilai / total).toFixed(1);
             const max = Math.max(...processedTableData.map(d => d.nilai));
 
-            // ✅ Lulus dihitung dari status database (case-insensitive: "Lulus", "LULUS", "Selesai"?)
-            const lulusCount = processedTableData.filter(d => {
-                const s = (d.statusRaw || '').toUpperCase();
-                return s === 'LULUS' || s === 'LULUS' || s === 'SELESAI';
-            }).length;
-            const persenLulus = ((lulusCount / total) * 100).toFixed(0);
+            // Persentase Selesai berdasarkan nilai >= PASSING_SCORE
+            const selesaiCount = processedTableData.filter(d => d.nilai >= PASSING_SCORE).length;
+            const persenSelesai = ((selesaiCount / total) * 100).toFixed(0);
 
             document.getElementById('statTotalSiswa').textContent = total;
             document.getElementById('statRataRata').textContent = avg;
             document.getElementById('statNilaiMax').textContent = max;
-            document.getElementById('statPersenLulus').textContent = `${persenLulus}%`;
+            document.getElementById('statPersenLulus').textContent = `${persenSelesai}%`;
         }
 
         // ==================== RENDER TABEL ====================
         function getStatusBadge(status) {
             const s = (status || '').toUpperCase();
-            if (s === 'LULUS' || s === 'SELESAI' || s === 'SUKSES') {
+            if (s === 'SELESAI' || s === 'LULUS' || s === 'SUKSES') {
                 return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span> ${status}
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span> Selesai
                 </span>`;
             } else if (s === 'REMEDIAL' || s === 'GAGAL' || s === 'TIDAK LULUS') {
                 return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
-                    <span class="w-1.5 h-1.5 rounded-full bg-rose-500 mr-1.5"></span> ${status}
+                    <span class="w-1.5 h-1.5 rounded-full bg-rose-500 mr-1.5"></span> Remedial
                 </span>`;
             } else {
                 return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
@@ -772,7 +763,8 @@
             const marginLeft = 12;
             const marginRight = 12;
             const marginTop = 12;
-            const contentWidth = pageWidth - marginLeft - marginRight; // 186mm
+            const marginBottom = 15;
+            const contentWidth = pageWidth - marginLeft - marginRight;
 
             // HEADER
             doc.setFont('helvetica', 'bold');
@@ -794,24 +786,23 @@
             const avg = total > 0 ? (processedTableData.reduce((a, c) => a + c.nilai, 0) / total).toFixed(1) : 0;
             const max = total > 0 ? Math.max(...processedTableData.map(d => d.nilai)) : 0;
             const min = total > 0 ? Math.min(...processedTableData.map(d => d.nilai)) : 0;
-            const lulusCount = processedTableData.filter(d => {
-                const s = (d.statusRaw || '').toUpperCase();
-                return s === 'LULUS' || s === 'SELESAI' || s === 'SUKSES';
-            }).length;
-            const persenLulus = total > 0 ? ((lulusCount / total) * 100).toFixed(1) : 0;
+
+            // Selesai berdasarkan nilai >= PASSING_SCORE
+            const selesaiCount = processedTableData.filter(d => d.nilai >= PASSING_SCORE).length;
+            const remedialCount = total - selesaiCount;
 
             doc.setFontSize(8);
             doc.setFont('helvetica', 'normal');
             const statsY = marginTop + 25;
             doc.text(`Total Siswa: ${total}`, marginLeft, statsY);
-            doc.text(`Rata-rata: ${avg}`, marginLeft + 45, statsY);
-            doc.text(`Tertinggi: ${max}`, marginLeft + 85, statsY);
-            doc.text(`Terendah: ${min}`, marginLeft + 115, statsY);
-            doc.text(`Lulus: ${lulusCount} (${persenLulus}%)`, marginLeft + 145, statsY);
+            doc.text(`Rata-rata: ${avg}`, marginLeft + 40, statsY);
+            doc.text(`Tertinggi: ${max}`, marginLeft + 78, statsY);
+            doc.text(`Terendah: ${min}`, marginLeft + 108, statsY);
+            doc.text(`Selesai (>=${PASSING_SCORE}): ${selesaiCount}`, marginLeft + 138, statsY);
+            doc.text(`Remedial: ${remedialCount}`, marginLeft + 168, statsY);
 
             // TABEL: total 186mm
             const colWidths = { no: 10, nama: 50, id: 28, nilai: 18, status: 25, waktu: 55 };
-            // 10 + 50 + 28 + 18 + 25 + 55 = 186 ✓
 
             const tableBody = filteredTableData.map((row, i) => [
                 i + 1,
@@ -828,7 +819,9 @@
                 body: tableBody,
                 theme: 'grid',
                 tableWidth: contentWidth,
-                margin: { left: marginLeft, right: marginRight },
+                margin: { left: marginLeft, right: marginRight, bottom: marginBottom + 40 },
+                pageBreak: 'auto',
+                rowPageBreak: 'avoid',
                 styles: {
                     fontSize: 8,
                     cellPadding: 1.8,
@@ -858,7 +851,7 @@
                 didParseCell: function(data) {
                     if (data.section === 'body' && data.column.index === 4) {
                         const s = String(data.cell.raw || '').toUpperCase();
-                        if (s === 'LULUS' || s === 'SELESAI' || s === 'SUKSES') {
+                        if (s === 'SELESAI' || s === 'LULUS' || s === 'SUKSES') {
                             data.cell.styles.textColor = [5, 122, 85];
                             data.cell.styles.fontStyle = 'bold';
                         } else if (s === 'REMEDIAL' || s === 'GAGAL' || s === 'TIDAK LULUS') {
@@ -870,8 +863,10 @@
             });
 
             // FOOTER TTD
-            let finalY = doc.lastAutoTable.finalY + 10;
-            if (finalY + 50 > pageHeight - marginTop) {
+            let finalY = doc.lastAutoTable.finalY + 12;
+            const ttdBlockHeight = 45;
+
+            if (finalY + ttdBlockHeight > pageHeight - marginBottom) {
                 doc.addPage();
                 finalY = marginTop + 10;
             }
@@ -886,38 +881,40 @@
                 console.warn('Tanda tangan tidak dapat dimuat:', e.message);
             }
 
-            const ttdBlockWidth = 70;
+            // Blok TTD align center
+            const ttdBlockWidth = 80;
             const ttdBlockX = pageWidth - marginRight - ttdBlockWidth;
+            const ttdCenterX = ttdBlockX + (ttdBlockWidth / 2);
 
             doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');
-            doc.text('Mengetahui,', ttdBlockX, finalY);
-            doc.text('Guru Mata Pelajaran', ttdBlockX, finalY + 5);
+            doc.text('Mengetahui,', ttdCenterX, finalY, { align: 'center' });
+            doc.text('Guru Mata Pelajaran', ttdCenterX, finalY + 5, { align: 'center' });
 
             if (ttdData) {
-                const maxTtdWidth = 45;
-                const maxTtdHeight = 22;
+                const maxTtdWidth = 40;
+                const maxTtdHeight = 20;
                 let imgW = ttdData.width;
                 let imgH = ttdData.height;
                 const ratio = Math.min(maxTtdWidth / imgW, maxTtdHeight / imgH);
                 imgW = imgW * ratio;
                 imgH = imgH * ratio;
-                const imgX = ttdBlockX + (ttdBlockWidth - imgW) / 2;
-                const imgY = finalY + 7;
+                const imgX = ttdCenterX - (imgW / 2);
+                const imgY = finalY + 8;
                 try {
                     doc.addImage(ttdData.dataURL, 'PNG', imgX, imgY, imgW, imgH);
                 } catch (e) { console.warn('Gagal menambahkan TTD:', e); }
-                finalY = imgY + imgH + 2;
+                finalY = imgY + imgH + 3;
             } else {
                 finalY = finalY + 28;
             }
 
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(9);
-            doc.text(teacherConfig.nama, ttdBlockX, finalY + 3);
+            doc.text(teacherConfig.nama, ttdCenterX, finalY + 3, { align: 'center' });
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(8);
-            doc.text(`NIP. ${teacherConfig.nip}`, ttdBlockX, finalY + 8);
+            doc.text(`NIP. ${teacherConfig.nip}`, ttdCenterX, finalY + 8, { align: 'center' });
 
             doc.save(`Hasil_Kuis_${activeKuisId || 'Terbaru'}.pdf`);
         }
