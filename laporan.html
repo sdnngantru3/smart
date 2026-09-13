@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduSmart - Laporan</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<style>
+  body{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  .loader{width:18px;height:18px;border:2px solid #cbd5e1;border-top-color:#0f172a;border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .hidden2{display:none!important}
+</style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+<header class="bg-white border-b sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-extrabold">Laporan</h1>
+      <p class="text-xs text-slate-500">EduSmart LMS • Laporan Hasil Kuis</p>
+    </div>
+    <div class="text-right">
+      <div id="dbState" class="text-xs font-semibold text-slate-500">Mencari database...</div>
+      <div id="dbIdView" class="text-[10px] text-slate-400"></div>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto p-4 md:p-6 space-y-5">
+
+  <section class="bg-white rounded-2xl border shadow-sm p-5">
+    <div class="flex flex-col lg:flex-row lg:items-end gap-4">
+      <div class="flex-1">
+        <label class="block text-xs font-bold text-slate-500 mb-2">Jenis laporan</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="cursor-pointer">
+            <input type="radio" name="reportType" value="latest" checked class="peer sr-only">
+            <div class="border rounded-xl p-3 peer-checked:border-slate-800 peer-checked:bg-slate-50">
+              <div class="font-bold text-sm">Hasil Kuis Terakhir</div>
+              <div class="text-[11px] text-slate-500">Otomatis memilih kuis terbaru.</div>
+            </div>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="reportType" value="selected" class="peer sr-only">
+            <div class="border rounded-xl p-3 peer-checked:border-slate-800 peer-checked:bg-slate-50">
+              <div class="font-bold text-sm">Hasil Kuis Terpilih</div>
+              <div class="text-[11px] text-slate-500">Pilih satu atau beberapa kuis.</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div id="quizPickerWrap" class="flex-1 hidden2">
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-xs font-bold text-slate-500">Pilih kuis</label>
+          <label class="inline-flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+            <input id="selectAllQuiz" type="checkbox" class="rounded">
+            <span>Pilih Semua</span>
+          </label>
+        </div>
+        <div id="quizPicker" class="border rounded-xl p-2 max-h-44 overflow-auto space-y-1 bg-white"></div>
+        <div class="mt-1 text-[10px] text-slate-400">Centang satu, beberapa, atau semua kuis.</div>
+      </div>
+
+      <button id="loadBtn" onclick="buildReport()" class="bg-slate-900 text-white rounded-xl px-5 py-3 text-sm font-bold hover:bg-slate-700 disabled:opacity-50">
+        Tampilkan Laporan
+      </button>
+    </div>
+  </section>
+
+  <section id="info" class="hidden2 bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800"></section>
+
+  <section id="reportSection" class="hidden2 space-y-4">
+    <div class="bg-white rounded-2xl border shadow-sm p-5">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <h2 class="font-extrabold text-lg">Hasil Kuis</h2>
+          <p id="reportMeta" class="text-sm font-bold text-slate-700 mt-1"></p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="exportExcel()" class="bg-emerald-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-emerald-700">
+            Ekspor Excel
+          </button>
+          <button onclick="openPdfSettings()" class="bg-red-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-red-700">
+            Download PDF
+          </button>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+        <div class="bg-slate-50 rounded-xl p-3"><div class="text-[10px] text-slate-500">Jumlah siswa</div><div id="statStudents" class="text-xl font-extrabold">0</div></div>
+        <div class="bg-slate-50 rounded-xl p-3"><div class="text-[10px] text-slate-500">Selesai</div><div id="statDone" class="text-xl font-extrabold">0</div></div>
+        <div class="bg-slate-50 rounded-xl p-3"><div class="text-[10px] text-slate-500">Pelanggaran keamanan</div><div id="statViolation" class="text-xl font-extrabold">0</div></div>
+        <div class="bg-slate-50 rounded-xl p-3"><div class="text-[10px] text-slate-500">Tidak mengerjakan</div><div id="statMissing" class="text-xl font-extrabold">0</div></div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl border shadow-sm overflow-hidden">
+      <div class="px-4 py-3 border-b bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div id="tableQuizTitle" class="font-extrabold text-sm text-slate-800"></div>
+        <label class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+          Filter Status
+          <select id="statusFilter" class="border border-slate-200 rounded-lg px-3 py-2 bg-white text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-200">
+            <option value="all">Semua Status</option>
+            <option value="selesai">Selesai</option>
+            <option value="pelanggaran keamanan">Pelanggaran keamanan</option>
+            <option value="tidak mengerjakan">Tidak mengerjakan</option>
+          </select>
+        </label>
+      </div>
+      <div class="overflow-auto max-h-[65vh]">
+        <table class="min-w-[760px] w-full text-sm">
+          <thead class="sticky top-0 bg-slate-100 border-b">
+            <tr>
+              <th class="px-3 py-3 text-left text-xs font-extrabold">No</th>
+              <th class="px-3 py-3 text-left text-xs font-extrabold">NamaSiswa</th>
+              <th class="px-3 py-3 text-left text-xs font-extrabold">Kode Mapel</th>
+              <th class="px-3 py-3 text-center text-xs font-extrabold">Benar</th>
+              <th class="px-3 py-3 text-center text-xs font-extrabold">Salah</th>
+              <th class="px-3 py-3 text-center text-xs font-extrabold">Nilai</th>
+              <th class="px-3 py-3 text-left text-xs font-extrabold">Tanggal</th>
+              <th class="px-3 py-3 text-left text-xs font-extrabold">Status</th>
+              <th class="px-3 py-3 text-left text-xs font-extrabold">KuisID</th>
+            </tr>
+          </thead>
+          <tbody id="reportBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
+  <div id="pdfModal" class="hidden2 fixed inset-0 bg-slate-900/50 z-40 p-4 items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+      <div class="px-5 py-4 border-b flex items-center justify-between">
+        <div><h3 class="font-extrabold text-lg">Pengaturan PDF</h3><p class="text-xs text-slate-500">Informasi ini akan dicetak pada bagian tanda tangan laporan.</p></div>
+        <button onclick="closePdfSettings()" class="text-slate-400 hover:text-slate-700 text-xl">&times;</button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Tempat</label>
+          <input id="pdfPlace" class="w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-200" placeholder="Contoh: Medan">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Tanggal laporan</label>
+          <input id="pdfDate" type="date" class="w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-200">
+          <p class="text-[10px] text-slate-400 mt-1">Otomatis menggunakan tanggal saat PDF dibuat.</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Nama Guru</label>
+            <input id="pdfTeacher" class="w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-200">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">NIP</label>
+            <input id="pdfNip" class="w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-200">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Tanda tangan</label>
+          <div class="flex items-center gap-3">
+            <img id="signaturePreview" src="tanda_tangan.png" alt="Tanda tangan" class="h-16 w-36 object-contain border rounded-xl bg-slate-50" onerror="this.classList.add('hidden')">
+            <div class="flex-1">
+              <input id="signatureFile" type="file" accept="image/*" class="block w-full text-xs">
+              <button onclick="clearSignature()" type="button" class="mt-2 text-xs font-bold text-red-600 hover:underline">Hapus tanda tangan tersimpan</button>
+            </div>
+          </div>
+          <p class="text-[10px] text-slate-400 mt-1">Jika belum ada unggahan, PDF otomatis menggunakan <b>tanda_tangan.png</b>.</p>
+        </div>
+      </div>
+      <div class="px-5 py-4 border-t bg-slate-50 flex justify-end gap-2">
+        <button onclick="closePdfSettings()" class="border rounded-xl px-4 py-2.5 text-sm font-bold bg-white">Batal</button>
+        <button onclick="exportPdf()" class="bg-red-600 text-white rounded-xl px-5 py-2.5 text-sm font-bold">Buat PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading" class="hidden2 fixed inset-0 bg-slate-900/30 z-50 items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-xl px-5 py-4 flex items-center gap-3">
+      <div class="loader"></div><span id="loadingText" class="text-sm font-semibold">Memuat...</span>
+    </div>
+  </div>
+</main>
+
+<script>
+const CONFIG_KEY='edusmart_config';
+const DB_KEY='edusmart_spreadsheet_id';
+const API_KEY='edusmart_script_url';
+const PDF_TEACHER_KEY='edusmart_laporan_guru_nama';
+const PDF_NIP_KEY='edusmart_laporan_guru_nip';
+const PDF_PLACE_KEY='edusmart_laporan_tempat';
+const PDF_SIGNATURE_KEY='edusmart_laporan_tanda_tangan';
+
+const state={
+  dbId:'',
+  apiUrl:'',
+  students:[],
+  results:[],
+  quizzes:[],
+  currentRows:[],filteredRows:[],
+  currentSelection:[]
+};
+
+const $=id=>document.getElementById(id);
+
+function showLoading(on,text='Memuat...'){
+  $('loadingText').textContent=text;
+  $('loading').classList.toggle('hidden2',!on);
+  $('loading').classList.toggle('flex',on);
+}
+function showInfo(msg){
+  $('info').textContent=msg;
+  $('info').classList.remove('hidden2');
+}
+function clearInfo(){ $('info').classList.add('hidden2'); }
+
+function loadConfig(){
+  let cfg={};
+  try{cfg=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}')}catch(e){}
+  state.dbId=(new URLSearchParams(location.search).get('db')||localStorage.getItem(DB_KEY)||cfg.spreadsheetId||'').trim();
+  state.apiUrl=(new URLSearchParams(location.search).get('api')||cfg.scriptUrl||localStorage.getItem(API_KEY)||'').trim();
+  $('dbIdView').textContent=state.dbId?('••••'+state.dbId.slice(-8)):'';
+  $('dbState').textContent=state.dbId?'Database ditemukan di localStorage':'Spreadsheet ID tidak ditemukan';
+  $('dbState').className='text-xs font-semibold '+(state.dbId?'text-emerald-600':'text-red-600');
+}
+
+function normalizeUrl(url){
+  url=String(url||'').trim();
+  if(!url)return '';
+  if(url.includes('/exec'))return url.split('?')[0];
+  return url.replace(/\/+$/,'');
+}
+
+function rpc(action,body={}){
+  return new Promise((resolve,reject)=>{
+    const url=normalizeUrl(state.apiUrl);
+    if(!url)return reject(Error('URL Apps Script tidak tersedia di localStorage.'));
+    fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({action,body})
+    }).then(r=>r.json()).then(resolve).catch(reject);
+  });
+}
+
+function gvizRequest(sheetName){
+  return new Promise((resolve,reject)=>{
+    if(!state.dbId)return reject(Error('Spreadsheet ID tidak tersedia.'));
+    const cb='__laporan_gviz_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    let timer;
+    const script=document.createElement('script');
+    const cleanup=()=>{clearTimeout(timer);try{delete window[cb]}catch(e){window[cb]=undefined}script.remove()};
+    window[cb]=data=>{cleanup();resolve(data)};
+    script.onerror=()=>{cleanup();reject(Error('Gagal membaca sheet '+sheetName))};
+    script.src='https://docs.google.com/spreadsheets/d/'+encodeURIComponent(state.dbId)+'/gviz/tq?sheet='+encodeURIComponent(sheetName)+'&tqx=out:json;responseHandler:'+cb;
+    timer=setTimeout(()=>{cleanup();reject(Error('Timeout membaca sheet '+sheetName))},15000);
+    document.body.appendChild(script);
+  });
+}
+
+function gvizRows(data){
+  const cols=(data.table?.cols||[]).map(c=>String(c.label||c.id||'').trim());
+  return (data.table?.rows||[]).map(row=>{
+    const obj={};
+    (row.c||[]).forEach((cell,i)=>{
+      const key=cols[i]||('COL'+i);
+      obj[key]=cell?.v??'';
+    });
+    return obj;
+  });
+}
+
+function normKey(s){
+  return String(s??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+function field(obj,names,def=''){
+  const map={};
+  Object.keys(obj||{}).forEach(k=>map[normKey(k)]=obj[k]);
+  for(const n of names){
+    const k=normKey(n);
+    if(Object.prototype.hasOwnProperty.call(map,k) && map[k]!=='' && map[k]!=null)return map[k];
+  }
+  return def;
+}
+function num(v){
+  const n=Number(String(v??'').replace(',','.'));
+  return Number.isFinite(n)?n:0;
+}
+function nisKey(v){return String(v??'').trim();}
+function nisCompare(a,b){
+  const sa=nisKey(a.NIS), sb=nisKey(b.NIS);
+  const na=Number(sa), nb=Number(sb);
+  if(Number.isFinite(na)&&Number.isFinite(nb))return na-nb;
+  return sa.localeCompare(sb,'id',{numeric:true,sensitivity:'base'});
+}
+function dateValue(v){
+  if(v==null||v==='')return 0;
+  const d=new Date(v);
+  if(!Number.isNaN(d.getTime()))return d.getTime();
+  const m=String(v).match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  if(m)return new Date(+m[3],+m[2]-1,+m[1]).getTime();
+  return 0;
+}
+function parseDate(v){
+  if(v==null||v==='')return null;
+  if(v instanceof Date && !Number.isNaN(v.getTime()))return v;
+  const s=String(v).trim();
+  let m=s.match(/^Date\((\d{4}),(\d{1,2}),(\d{1,2})(?:,(\d{1,2}),(\d{1,2}),(\d{1,2}))?\)$/i);
+  if(m)return new Date(+m[1],+m[2],+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+  const d=new Date(s);
+  if(!Number.isNaN(d.getTime()))return d;
+  m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m)return new Date(+m[3],+m[2]-1,+m[1]);
+  return null;
+}
+function dateText(v){
+  const d=parseDate(v);
+  if(!d)return v?String(v):'';
+  return d.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+function statusNorm(v){return String(v||'').trim().toLowerCase()}
+
+async function loadData(){
+  showLoading(true,'Membaca data siswa...');
+  let ds=[];
+  // Data siswa mengikuti database EduSmart. Prioritaskan Siswa, lalu
+  // gunakan DataSiswa bila sheet Siswa tidak tersedia/kosong.
+  try{ds=gvizRows(await gvizRequest('Siswa'))}catch(e){}
+  if(!ds.length){
+    try{ds=gvizRows(await gvizRequest('DataSiswa'))}catch(e){}
+  }
+  if(!ds.length){
+    throw Error('Data siswa tidak dapat dibaca. Pastikan sheet Siswa atau DataSiswa tersedia dan dapat dibaca oleh aplikasi.');
+  }
+
+  state.students=ds.map(r=>({
+    NIS:nisKey(field(r,['NIS','nis','NomorInduk','NoInduk'])),
+    NamaSiswa:String(field(r,['NamaSiswa','Nama Siswa','Nama','nama'],'')).trim(),
+    Kelas:String(field(r,['Kelas','KelasSiswa','Class'],'')).trim(),
+    raw:r
+  })).filter(s=>s.NIS||s.NamaSiswa).sort(nisCompare);
+
+  showLoading(true,'Membaca HasilKuis...');
+  let results=[];
+  // HasilKuis dibaca langsung dari spreadsheet terlebih dahulu agar seluruh
+  // baris hasil tersedia. Apps Script hanya menjadi fallback.
+  try{results=gvizRows(await gvizRequest('HasilKuis'))}catch(e){}
+  if(!results.length){
+    try{
+      if(state.apiUrl){
+        const r=await rpc('getQuizResults');
+        if(r?.success && Array.isArray(r.data))results=r.data;
+      }
+    }catch(e){}
+  }
+
+  state.results=results.map(r=>({
+    NIS:nisKey(field(r,['NIS','nis','NomorInduk','NoInduk'])),
+    NamaSiswa:String(field(r,['NamaSiswa','Nama Siswa','Nama'],'')).trim(),
+    Benar:num(field(r,['Benar','benar'])),
+    Salah:num(field(r,['Salah','salah'])),
+    Nilai:num(field(r,['Nilai','nilai','Score'])),
+    Tanggal:field(r,['Tanggal','tanggal'],''),
+    WaktuMulai:field(r,['WaktuMulai','Waktu Mulai'],''),
+    WaktuSelesai:field(r,['WaktuSelesai','Waktu Selesai'],''),
+    Status:String(field(r,['Status','status'],'')).trim(),
+    KuisID:String(field(r,['KuisID','Kuis ID','IDKuis','ID Kuis','QuizID','Quiz Id','Quiz ID','KodeKuis','Kode Kuis'],'')).trim(),
+    raw:r
+  })).filter(r=>r.NIS||r.KuisID);
+
+  // Kuis opsional, hanya untuk membuat pilihan lebih mudah dibaca.
+  try{
+    const qs=gvizRows(await gvizRequest('Kuis'));
+    state.quizzes=qs.map(r=>({
+      ID:String(field(r,['ID','KuisID','QuizID'],'')).trim(),
+      Judul:String(field(r,['Judul','NamaKuis','Nama Kuis','Title'],'')).trim(),
+      Kelas:String(field(r,['Kelas'],'')).trim(),
+      KodeMapel:String(field(r,['KodeMapel','Kode Mapel','Kode Mata Pelajaran','Mapel'],'')).trim(),
+      Tanggal:field(r,['Tanggal','tanggal'],'')
+    })).filter(q=>q.ID);
+  }catch(e){
+    state.quizzes=[];
+  }
+
+  populateQuizPicker();
+}
+
+function quizLabel(id){
+  const q=state.quizzes.find(x=>x.ID===id);
+  return q?.Judul ? q.Judul+' — '+id : id;
+}
+
+function uniqueQuizList(){
+  // Daftar/filter kuis HARUS berasal dari sheet Kuis, bukan dari siswa
+  // yang terakhir mengerjakan HasilKuis.
+  return state.quizzes.map((q,index)=>({
+    id:String(q.ID||'').trim(),
+    Judul:q.Judul||'',
+    Kelas:q.Kelas||'',
+    KodeMapel:q.KodeMapel||'',
+    sortDate:dateValue(q.Tanggal)||0,
+    index
+  })).filter(q=>q.id).sort((a,b)=>{
+    if(a.sortDate!==b.sortDate)return b.sortDate-a.sortDate;
+    return b.index-a.index;
+  });
+}
+
+function latestQuizId(){
+  const list=uniqueQuizList();
+  return list[0]?.id||'';
+}
+
+function populateQuizPicker(){
+  const box=$('quizPicker');
+  box.innerHTML='';
+  const list=uniqueQuizList();
+  list.forEach((q,i)=>{
+    const label=document.createElement('label');
+    label.className='flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 cursor-pointer text-sm';
+    label.innerHTML=`<input type="checkbox" class="quiz-check mt-1 rounded" value="${esc(q.id)}"><span><span class="font-semibold">${esc(q.Judul||quizLabel(q.id))}</span><span class="block text-[10px] text-slate-400">${esc(q.id)}</span></span>`;
+    box.appendChild(label);
+  });
+  const latest=latestQuizId();
+  if(latest){
+    const first=box.querySelector(`.quiz-check[value="${CSS.escape(latest)}"]`);
+    if(first)first.checked=true;
+  }
+  $('selectAllQuiz').checked=false;
+  $('selectAllQuiz').indeterminate=false;
+}
+
+function selectedQuizIds(){
+  return [...document.querySelectorAll('#quizPicker .quiz-check:checked')].map(o=>o.value).filter(Boolean);
+}
+
+function latestResultFor(nis,quizId){
+  const keyNis=String(nis||'').trim();
+  const keyQuiz=String(quizId||'').trim();
+  const rows=state.results.filter(r=>String(r.NIS||'').trim()===keyNis&&String(r.KuisID||'').trim()===keyQuiz);
+  if(!rows.length)return null;
+  return rows.sort((a,b)=>{
+    const ta=Math.max(dateValue(a.WaktuSelesai),dateValue(a.Tanggal));
+    const tb=Math.max(dateValue(b.WaktuSelesai),dateValue(b.Tanggal));
+    return tb-ta;
+  })[0];
+}
+
+function makeRows(quizId){
+  return state.students.map(s=>{
+    const r=latestResultFor(s.NIS,quizId);
+    if(!r){
+      const q=state.quizzes.find(x=>x.ID===quizId)||{};
+      return {NIS:s.NIS,NamaSiswa:s.NamaSiswa,Benar:0,Salah:0,Nilai:0,Tanggal:'',Status:'Tidak mengerjakan',KuisID:quizId,Judul:q.Judul||'',KodeMapel:q.KodeMapel||''};
+    }
+    return {
+      NIS:s.NIS,
+      NamaSiswa:s.NamaSiswa||r.NamaSiswa,
+      Benar:r.Benar,
+      Salah:r.Salah,
+      Nilai:r.Nilai,
+      Tanggal:dateText(r.Tanggal||r.WaktuSelesai),
+      Status:r.Status||'',
+      KuisID:r.KuisID,
+      Judul:(state.quizzes.find(x=>x.ID===r.KuisID)||{}).Judul||'',
+      KodeMapel:(state.quizzes.find(x=>x.ID===r.KuisID)||{}).KodeMapel||''
+    };
+  });
+}
+
+function buildReport(){
+  clearInfo();
+  const type=document.querySelector('input[name="reportType"]:checked')?.value||'latest';
+  let ids=type==='latest'?[latestQuizId()]:selectedQuizIds();
+  if(!ids.length){showInfo('Belum ada hasil kuis yang dapat dipilih.');return;}
+
+  // Satu laporan dapat memuat beberapa kuis. Setiap siswa dibuat satu baris per kuis.
+  state.currentSelection=ids;
+  state.currentRows=[];
+  ids.forEach(id=>{state.currentRows.push(...makeRows(id))});
+
+  renderReport();
+}
+
+function renderReport(){
+  $('reportSection').classList.remove('hidden2');
+  const titles=state.currentSelection.map(id=>{
+    const q=state.quizzes.find(x=>x.ID===id);
+    return q?.Judul||id;
+  });
+  $('reportMeta').textContent=titles.join(' • ');
+  $('tableQuizTitle').textContent=titles.length===1 ? titles[0] : 'Kuis Terpilih: '+titles.join(' • ');
+
+  const filter=statusNorm($('statusFilter')?.value||'all');
+  const visibleRows=filter==='all' ? state.currentRows : state.currentRows.filter(r=>statusNorm(r.Status)===filter);
+  state.filteredRows=visibleRows;
+
+  const body=$('reportBody');
+  body.innerHTML='';
+  let done=0,viol=0,missing=0;
+  state.currentRows.forEach(r=>{
+    const st=statusNorm(r.Status);
+    if(st==='selesai')done++;
+    else if(st.includes('pelanggaran keamanan'))viol++;
+    else if(st==='tidak mengerjakan')missing++;
+  });
+  visibleRows.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.className='border-b last:border-0 hover:bg-slate-50';
+    tr.innerHTML=`
+      <td class="px-3 py-2">${i+1}</td>
+      <td class="px-3 py-2 font-semibold">${esc(r.NamaSiswa)}</td>
+      <td class="px-3 py-2 font-semibold">${esc(r.KodeMapel)}</td>
+      <td class="px-3 py-2 text-center">${r.Benar}</td>
+      <td class="px-3 py-2 text-center">${r.Salah}</td>
+      <td class="px-3 py-2 text-center font-extrabold">${r.Nilai}</td>
+      <td class="px-3 py-2">${esc(r.Tanggal)}</td>
+      <td class="px-3 py-2">${esc(r.Status)}</td>
+      <td class="px-3 py-2 text-xs text-slate-500">${esc(r.KuisID)}</td>`;
+    body.appendChild(tr);
+  });
+  $('statStudents').textContent=state.students.length;
+  $('statDone').textContent=done;
+  $('statViolation').textContent=viol;
+  $('statMissing').textContent=missing;
+}
+
+function esc(v){
+  return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function exportExcel(){
+  if(!state.currentRows.length){showInfo('Tampilkan laporan terlebih dahulu.');return;}
+  if(typeof XLSX==='undefined'){
+    showInfo('Library Excel belum termuat. Periksa koneksi internet lalu coba lagi.');
+    return;
+  }
+  const rowsToExport=state.filteredRows?.length ? state.filteredRows : state.currentRows;
+  const data=rowsToExport.map((r,i)=>({
+    No:i+1,
+    NamaSiswa:r.NamaSiswa,
+    KodeMapel:r.KodeMapel,
+    Benar:r.Benar,
+    Salah:r.Salah,
+    Nilai:r.Nilai,
+    Tanggal:r.Tanggal,
+    Status:r.Status,
+    KuisID:r.KuisID
+  }));
+  const ws=XLSX.utils.json_to_sheet(data);
+  ws['!cols']=[{wch:6},{wch:34},{wch:16},{wch:10},{wch:10},{wch:10},{wch:34},{wch:25},{wch:24}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'HasilKuis');
+  const stamp=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,'Laporan_HasilKuis_'+stamp+'.xlsx');
+}
+
+function todayISO(){
+  const d=new Date();
+  const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function formatLongDate(v){
+  const d=parseDate(v)||new Date();
+  return d.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+function signatureSource(){return localStorage.getItem(PDF_SIGNATURE_KEY)||'tanda_tangan.png'}
+function openPdfSettings(){
+  if(!state.currentRows.length){showInfo('Tampilkan laporan terlebih dahulu.');return;}
+  $('pdfPlace').value=localStorage.getItem(PDF_PLACE_KEY)||'';
+  $('pdfTeacher').value=localStorage.getItem(PDF_TEACHER_KEY)||'Aburrizal Hamdani Lubis, S.Pd';
+  $('pdfNip').value=localStorage.getItem(PDF_NIP_KEY)||'199507022020121009';
+  $('pdfDate').value=todayISO();
+  const src=signatureSource();
+  $('signaturePreview').src=src;
+  $('signaturePreview').classList.remove('hidden');
+  $('signaturePreview').onerror=function(){this.classList.add('hidden')};
+  $('pdfModal').classList.remove('hidden2');$('pdfModal').classList.add('flex');
+}
+function closePdfSettings(){$('pdfModal').classList.add('hidden2');$('pdfModal').classList.remove('flex')}
+function clearSignature(){localStorage.removeItem(PDF_SIGNATURE_KEY);$('signaturePreview').src='tanda_tangan.png';$('signaturePreview').classList.remove('hidden')}
+$('signatureFile').addEventListener('change',e=>{
+  const f=e.target.files?.[0]; if(!f)return;
+  if(!f.type.startsWith('image/')){showInfo('File tanda tangan harus berupa gambar.');return;}
+  const reader=new FileReader();reader.onload=()=>{localStorage.setItem(PDF_SIGNATURE_KEY,reader.result);$('signaturePreview').src=reader.result;$('signaturePreview').classList.remove('hidden')};reader.readAsDataURL(f);
+});
+function imageDataFromSrc(src){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();img.onload=()=>{try{const c=document.createElement('canvas');c.width=img.naturalWidth||600;c.height=img.naturalHeight||250;const x=c.getContext('2d');x.drawImage(img,0,0);resolve(c.toDataURL('image/png'))}catch(e){reject(e)}};img.onerror=()=>reject(Error('Tanda tangan tidak dapat dibaca.'));img.src=src;
+  });
+}
+async function exportPdf(){
+  if(!state.currentRows.length){showInfo('Tampilkan laporan terlebih dahulu.');return;}
+  if(!window.jspdf?.jsPDF){showInfo('Library PDF belum termuat. Periksa koneksi internet lalu coba lagi.');return;}
+  const place=$('pdfPlace').value.trim();
+  const date=$('pdfDate').value||todayISO();
+  const teacher=$('pdfTeacher').value.trim()||'Aburrizal Hamdani Lubis, S.Pd';
+  const nip=$('pdfNip').value.trim()||'199507022020121009';
+  localStorage.setItem(PDF_PLACE_KEY,place);localStorage.setItem(PDF_TEACHER_KEY,teacher);localStorage.setItem(PDF_NIP_KEY,nip);
+  const rows=state.filteredRows?.length?state.filteredRows:state.currentRows;
+  const titles=state.currentSelection.map(id=>(state.quizzes.find(q=>q.ID===id)||{}).Judul||id);
+  const doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const pageW=doc.internal.pageSize.getWidth();
+
+  // Judul PDF tetap seperti sebelumnya, tetapi seluruh elemen dibuat hitam.
+  doc.setTextColor(0,0,0);
+  doc.setFontSize(16);doc.setFont(undefined,'bold');
+  doc.text('LAPORAN HASIL KUIS',pageW/2,14,{align:'center'});
+  doc.setFontSize(11);doc.setFont(undefined,'normal');
+  doc.text(titles.length===1?titles[0]:'Kuis Terpilih: '+titles.join(' • '),pageW/2,21,{align:'center',maxWidth:pageW-30});
+
+  const body=rows.map((r,i)=>[
+    i+1,
+    r.NamaSiswa,
+    r.KodeMapel,
+    r.Benar,
+    r.Salah,
+    r.Nilai,
+    r.Tanggal,
+    r.Status,
+    r.KuisID
+  ]);
+
+  // Tabel dibuat dengan lebar tetap dan margin kiri-kanan sama agar benar-benar berada di tengah.
+  // Lebar kolom juga disusun agar Nama Siswa dan KuisID tidak saling menumpuk.
+  const tableWidth=229;
+  const sideMargin=(pageW-tableWidth)/2;
+
+  doc.autoTable({
+    startY:27,
+    margin:{left:sideMargin,right:sideMargin},
+    tableWidth:tableWidth,
+    halign:'center',
+    head:[['No','Nama Siswa','Kode Mapel','Benar','Salah','Nilai','Tanggal','Status','KuisID']],
+    body:body,
+    theme:'grid',
+    styles:{
+      fontSize:7,
+      cellPadding:{top:1.6,right:1.8,bottom:1.6,left:1.8},
+      overflow:'linebreak',
+      textColor:[0,0,0],
+      lineColor:[0,0,0],
+      lineWidth:0.2,
+      valign:'middle',
+      fontStyle:'normal'
+    },
+    headStyles:{
+      fillColor:[255,255,255],
+      textColor:[0,0,0],
+      lineColor:[0,0,0],
+      lineWidth:0.25,
+      fontStyle:'bold',
+      halign:'center',
+      valign:'middle'
+    },
+    bodyStyles:{
+      textColor:[0,0,0],
+      lineColor:[0,0,0]
+    },
+    alternateRowStyles:{fillColor:[255,255,255]},
+    columnStyles:{
+      0:{cellWidth:8,halign:'center'},
+      1:{cellWidth:52,halign:'left',fontSize:7},
+      2:{cellWidth:23,halign:'center'},
+      3:{cellWidth:11,halign:'center'},
+      4:{cellWidth:11,halign:'center'},
+      5:{cellWidth:12,halign:'center'},
+      6:{cellWidth:32,halign:'left',fontSize:6.8},
+      7:{cellWidth:35,halign:'left',fontSize:6.8},
+      8:{cellWidth:45,halign:'center',fontSize:6.5,overflow:'linebreak'}
+    },
+    didParseCell:function(data){
+      // Pastikan semua teks tabel tetap hitam, termasuk saat status/filter tertentu dipakai.
+      data.cell.styles.textColor=[0,0,0];
+    }
+  });
+
+  let y=(doc.lastAutoTable?.finalY||27)+10;
+  if(y>170){doc.addPage();y=18}
+  doc.setTextColor(0,0,0);
+  doc.setFontSize(10);doc.setFont(undefined,'normal');
+  doc.text(`${place?place+', ':''}${formatLongDate(date)}`,pageW-78,y);
+  doc.text('Mengetahui,',pageW-78,y+5);doc.text('Guru Mata Pelajaran,',pageW-78,y+10);
+  try{const img=await imageDataFromSrc(signatureSource());doc.addImage(img,'PNG',pageW-77,y+12,42,20)}catch(e){}
+  doc.setFont(undefined,'bold');doc.text(teacher,pageW-78,y+36);doc.setFont(undefined,'normal');doc.text('NIP. '+nip,pageW-78,y+41);
+  const stamp=new Date().toISOString().slice(0,10);doc.save('Laporan_HasilKuis_'+stamp+'.pdf');closePdfSettings();
+}
+
+$('statusFilter').addEventListener('change',()=>{if(state.currentRows.length)renderReport()});
+
+$('selectAllQuiz').addEventListener('change',e=>{
+  document.querySelectorAll('#quizPicker .quiz-check').forEach(c=>c.checked=e.target.checked);
+});
+$('quizPicker').addEventListener('change',()=>{
+  const all=[...document.querySelectorAll('#quizPicker .quiz-check')];
+  const checked=all.filter(c=>c.checked);
+  $('selectAllQuiz').checked=all.length>0&&checked.length===all.length;
+  $('selectAllQuiz').indeterminate=checked.length>0&&checked.length<all.length;
+});
+
+document.querySelectorAll('input[name="reportType"]').forEach(r=>{
+  r.addEventListener('change',()=>{
+    $('quizPickerWrap').classList.toggle('hidden2',r.value!=='selected');
+  });
+});
+
+(async function init(){
+  loadConfig();
+  if(!state.dbId){
+    showInfo('Spreadsheet ID tidak ditemukan di localStorage. Buka aplikasi yang menyimpan konfigurasi EduSmart terlebih dahulu, atau gunakan parameter ?db=SPREADSHEET_ID pada URL.');
+    return;
+  }
+  try{
+    await loadData();
+    if(!state.students.length)showInfo('Data siswa pada sheet Siswa belum ditemukan.');
+    else if(!state.results.length)showInfo('Data HasilKuis belum ditemukan atau belum dapat dibaca.');
+  }catch(e){
+    showInfo(e.message||'Gagal memuat data.');
+  }finally{
+    showLoading(false);
+  }
+})();
+</script>
+</body>
+</html>
