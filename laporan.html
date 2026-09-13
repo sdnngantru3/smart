@@ -325,15 +325,11 @@ function statusNorm(v){return String(v||'').trim().toLowerCase()}
 
 async function loadData(){
   showLoading(true,'Membaca data siswa...');
-  let ds=[];
-  // Data siswa mengikuti database EduSmart. Prioritaskan Siswa, lalu
-  // gunakan DataSiswa bila sheet Siswa tidak tersedia/kosong.
-  try{ds=gvizRows(await gvizRequest('Siswa'))}catch(e){}
-  if(!ds.length){
-    try{ds=gvizRows(await gvizRequest('DataSiswa'))}catch(e){}
-  }
-  if(!ds.length){
-    throw Error('Data siswa tidak dapat dibaca. Pastikan sheet Siswa atau DataSiswa tersedia dan dapat dibaca oleh aplikasi.');
+  let ds;
+  try{
+    ds=gvizRows(await gvizRequest('Siswa'));
+  }catch(e){
+    throw Error('Sheet Siswa tidak dapat dibaca. Pastikan nama sheet adalah Siswa dan spreadsheet dapat dibaca oleh aplikasi.');
   }
 
   state.students=ds.map(r=>({
@@ -345,16 +341,16 @@ async function loadData(){
 
   showLoading(true,'Membaca HasilKuis...');
   let results=[];
-  // HasilKuis dibaca langsung dari spreadsheet terlebih dahulu agar seluruh
-  // baris hasil tersedia. Apps Script hanya menjadi fallback.
-  try{results=gvizRows(await gvizRequest('HasilKuis'))}catch(e){}
+  try{
+    if(state.apiUrl){
+      const r=await rpc('getQuizResults');
+      if(r?.success && Array.isArray(r.data))results=r.data;
+    }
+  }catch(e){}
+
+  // Fallback: baca langsung HasilKuis bila tersedia.
   if(!results.length){
-    try{
-      if(state.apiUrl){
-        const r=await rpc('getQuizResults');
-        if(r?.success && Array.isArray(r.data))results=r.data;
-      }
-    }catch(e){}
+    try{results=gvizRows(await gvizRequest('HasilKuis'))}catch(e){}
   }
 
   state.results=results.map(r=>({
@@ -367,7 +363,7 @@ async function loadData(){
     WaktuMulai:field(r,['WaktuMulai','Waktu Mulai'],''),
     WaktuSelesai:field(r,['WaktuSelesai','Waktu Selesai'],''),
     Status:String(field(r,['Status','status'],'')).trim(),
-    KuisID:String(field(r,['KuisID','Kuis ID','IDKuis','ID Kuis','QuizID','Quiz Id','Quiz ID','KodeKuis','Kode Kuis'],'')).trim(),
+    KuisID:String(field(r,['KuisID','Kuis ID','QuizID','Quiz Id'],'')).trim(),
     raw:r
   })).filter(r=>r.NIS||r.KuisID);
 
@@ -394,19 +390,14 @@ function quizLabel(id){
 }
 
 function uniqueQuizList(){
-  // Daftar/filter kuis HARUS berasal dari sheet Kuis, bukan dari siswa
-  // yang terakhir mengerjakan HasilKuis.
-  return state.quizzes.map((q,index)=>({
-    id:String(q.ID||'').trim(),
-    Judul:q.Judul||'',
-    Kelas:q.Kelas||'',
-    KodeMapel:q.KodeMapel||'',
-    sortDate:dateValue(q.Tanggal)||0,
-    index
-  })).filter(q=>q.id).sort((a,b)=>{
-    if(a.sortDate!==b.sortDate)return b.sortDate-a.sortDate;
-    return b.index-a.index;
+  const map=new Map();
+  state.results.forEach(r=>{
+    if(!r.KuisID)return;
+    const old=map.get(r.KuisID);
+    const scoreDate=Math.max(dateValue(r.WaktuSelesai),dateValue(r.Tanggal));
+    if(!old||scoreDate>old.sortDate)map.set(r.KuisID,{id:r.KuisID,sortDate:scoreDate});
   });
+  return [...map.values()].sort((a,b)=>b.sortDate-a.sortDate);
 }
 
 function latestQuizId(){
@@ -438,9 +429,7 @@ function selectedQuizIds(){
 }
 
 function latestResultFor(nis,quizId){
-  const keyNis=String(nis||'').trim();
-  const keyQuiz=String(quizId||'').trim();
-  const rows=state.results.filter(r=>String(r.NIS||'').trim()===keyNis&&String(r.KuisID||'').trim()===keyQuiz);
+  const rows=state.results.filter(r=>r.NIS===nis&&r.KuisID===quizId);
   if(!rows.length)return null;
   return rows.sort((a,b)=>{
     const ta=Math.max(dateValue(a.WaktuSelesai),dateValue(a.Tanggal));
