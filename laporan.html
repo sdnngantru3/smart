@@ -252,7 +252,7 @@
         const DEFAULT_SHEET_ID = '1Vw5KYjqbv3a6YUCaZsNxrb-I6sXp4dUKGSippS38sSk';
         const DEFAULT_TEACHER_NAME = "Aburrizal Hamdani Lubis, S.Pd";
         const DEFAULT_TEACHER_NIP = "199507022020121009";
-        const PASSING_SCORE = 70;
+        const PASSING_SCORE = 75; // ✅ Nilai kelulusan diubah ke 75
 
         let currentSpreadsheetId = localStorage.getItem('gsheet_quiz_id') || DEFAULT_SHEET_ID;
         let activeKuisId = null;
@@ -878,14 +878,11 @@
                 console.warn('Tanda tangan tidak dapat dimuat:', e.message);
             }
 
-            // Blok TTD: teks rata KIRI, gambar di CENTER
-            const ttdBlockWidth = 80;
-            const ttdBlockX = pageWidth - marginRight - ttdBlockWidth; // 118mm
-            const ttdCenterX = ttdBlockX + (ttdBlockWidth / 2);
+            // ✅ Blok TTD: SEMUA elemen rata KIRI (termasuk gambar)
+            const ttdBlockX = pageWidth - marginRight - 80; // 118mm
 
             doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');
-            // ✅ Teks rata kiri
             doc.text('Mengetahui,', ttdBlockX, finalY);
             doc.text('Guru Mata Pelajaran', ttdBlockX, finalY + 5);
 
@@ -897,8 +894,8 @@
                 const ratio = Math.min(maxTtdWidth / imgW, maxTtdHeight / imgH);
                 imgW = imgW * ratio;
                 imgH = imgH * ratio;
-                // ✅ Gambar tetap center di dalam blok
-                const imgX = ttdCenterX - (imgW / 2);
+                // ✅ Gambar rata kiri — sejajar dengan teks di atasnya
+                const imgX = ttdBlockX;
                 const imgY = finalY + 8;
                 try {
                     doc.addImage(ttdData.dataURL, 'PNG', imgX, imgY, imgW, imgH);
@@ -908,7 +905,7 @@
                 finalY = finalY + 28;
             }
 
-            // ✅ Nama & NIP rata kiri
+            // Nama & NIP rata kiri
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(9);
             doc.text(teacherConfig.nama, ttdBlockX, finalY + 3);
