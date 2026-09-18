@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Hasil Kuis Google Sheets</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS (XLSX) CDN untuk export Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <!-- jsPDF CDN untuk export PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Top Header Navigation -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-indigo-600 rounded-lg text-white">
+                    <i data-lucide="bar-chart-3" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-900 leading-tight">Dashboard Hasil Kuis</h1>
+                    <p class="text-xs text-slate-500">Integrasi Real-time Google Sheets</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <button onclick="fetchDataFromSheets()" class="flex items-center space-x-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors">
+                    <i data-lucide="refresh-cw" class="w-4 h-4" id="refreshIcon"></i>
+                    <span class="hidden sm:inline">Muat Ulang</span>
+                </button>
+                <button onclick="toggleConfigModal()" class="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Pengaturan Sheet</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-6">
+
+        <!-- Error & Status Notification Banner -->
+        <div id="alertContainer" class="hidden rounded-xl p-4 border transition-all duration-300">
+            <div class="flex items-start space-x-3">
+                <div id="alertIcon" class="mt-0.5"></div>
+                <div class="flex-1">
+                    <h3 id="alertTitle" class="text-sm font-semibold"></h3>
+                    <p id="alertMessage" class="text-xs mt-1 leading-relaxed"></p>
+                </div>
+                <button onclick="closeAlert()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Quiz Information Banner -->
+        <div class="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+            <div class="absolute -right-10 -bottom-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+                <div>
+                    <div class="flex items-center space-x-2 text-indigo-200 text-xs font-semibold tracking-wider uppercase mb-1">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>Kuis Terpilih</span>
+                    </div>
+                    <h2 id="activeKuisTitle" class="text-2xl sm:text-3xl font-bold tracking-tight">Memuat Data Kuis...</h2>
+                    <p id="activeKuisMeta" class="text-indigo-200 text-sm mt-1">Mengambil ID Kuis terbaru dari Google Spreadsheet</p>
+                </div>
+                <div class="flex items-center space-x-2 bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 self-start md:self-auto">
+                    <i data-lucide="key" class="w-4 h-4 text-indigo-300"></i>
+                    <span class="text-xs text-indigo-200 font-medium">Kuis ID:</span>
+                    <span id="activeKuisIdBadge" class="text-sm font-bold text-white font-mono bg-indigo-600/50 px-2 py-0.5 rounded">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Stats Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                <div class="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                    <i data-lucide="users" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Siswa</p>
+                    <h4 id="statTotalSiswa" class="text-2xl font-bold text-slate-900 mt-0.5">0</h4>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                <div class="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <i data-lucide="calculator" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Rata-Rata Nilai</p>
+                    <h4 id="statRataRata" class="text-2xl font-bold text-slate-900 mt-0.5">0</h4>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                <div class="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                    <i data-lucide="trophy" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Nilai Tertinggi</p>
+                    <h4 id="statNilaiMax" class="text-2xl font-bold text-slate-900 mt-0.5">0</h4>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                <div class="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                    <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Persentase Lulus</p>
+                    <h4 id="statPersenLulus" class="text-2xl font-bold text-slate-900 mt-0.5">0%</h4>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Data Table Container -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col">
+            <!-- Table Action Controls -->
+            <div class="p-5 border-b border-slate-100 flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between bg-slate-50/50">
+                <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                    <!-- Dropdown Pilih Kuis -->
+                    <div class="relative w-full sm:w-72">
+                        <i data-lucide="list-filter" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                        <select id="kuisSelect" onchange="handleKuisChange()" class="w-full pl-9 pr-8 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer font-medium">
+                            <option value="">Memuat daftar kuis...</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                    </div>
+
+                    <div class="relative w-full sm:w-64">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                        <input type="text" id="searchInput" oninput="handleSearch()" placeholder="Cari nama atau ID siswa..." class="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all">
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
+                    <select id="filterStatus" onchange="handleFilter()" class="px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="ALL">Semua Status</option>
+                        <option value="LULUS">Lulus (≥ 70)</option>
+                        <option value="REMEDIAL">Remedial (&lt; 70)</option>
+                        <option value="BELUM">Belum Mengerjakan</option>
+                    </select>
+                    
+                    <button onclick="exportToCSV()" class="flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>CSV</span>
+                    </button>
+
+                    <button onclick="exportToExcel()" class="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-medium shadow-sm transition-colors">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                        <span>Excel</span>
+                    </button>
+
+                    <button onclick="exportToPDF()" class="flex items-center space-x-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-medium shadow-sm transition-colors">
+                        <i data-lucide="file-text" class="w-4 h-4"></i>
+                        <span>PDF</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="overflow-x-auto relative">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100/70 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="py-3.5 px-6">#</th>
+                            <th class="py-3.5 px-6 cursor-pointer hover:bg-slate-200/50 transition-colors" onclick="sortTable('nama')">
+                                <div class="flex items-center space-x-1">
+                                    <span>Nama Siswa</span>
+                                    <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+                                </div>
+                            </th>
+                            <th class="py-3.5 px-6">ID Siswa</th>
+                            <th class="py-3.5 px-6 cursor-pointer hover:bg-slate-200/50 transition-colors" onclick="sortTable('nilai')">
+                                <div class="flex items-center space-x-1">
+                                    <span>Nilai</span>
+                                    <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+                                </div>
+                            </th>
+                            <th class="py-3.5 px-6">Status</th>
+                            <th class="py-3.5 px-6">Waktu Penyerahan</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-100 text-sm text-slate-700">
+                        <!-- Table rows populated dynamically -->
+                    </tbody>
+                </table>
+
+                <!-- Loading Spinner Overlay -->
+                <div id="loadingSpinner" class="py-16 flex flex-col items-center justify-center space-y-3">
+                    <div class="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                    <p class="text-xs text-slate-500 font-medium">Mengambil data dari Google Sheet...</p>
+                </div>
+
+                <!-- Empty Data Placeholder -->
+                <div id="emptyDataState" class="hidden py-16 flex flex-col items-center justify-center text-center px-4">
+                    <div class="p-3 bg-slate-100 text-slate-400 rounded-full mb-3">
+                        <i data-lucide="inbox" class="w-8 h-8"></i>
+                    </div>
+                    <h4 class="text-sm font-semibold text-slate-700">Data Tidak Ditemukan</h4>
+                    <p class="text-xs text-slate-400 max-w-sm mt-1">Tidak ada data hasil kuis yang cocok dengan pencarian atau filter yang dipilih.</p>
+                </div>
+            </div>
+
+            <!-- Table Footer Stats -->
+            <div class="p-4 border-t border-slate-100 bg-slate-50/50 text-xs text-slate-500 flex justify-between items-center">
+                <span id="showingCount">Menampilkan 0 data</span>
+                <span>Diperbarui secara langsung</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Pengaturan Spreadsheet ID & Identitas Guru -->
+    <div id="configModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 transform transition-all max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+                <h3 class="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <i data-lucide="settings" class="w-5 h-5 text-indigo-600"></i>
+                    <span>Pengaturan Google Sheet</span>
+                </h3>
+                <button onclick="toggleConfigModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="py-4 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">Spreadsheet ID</label>
+                    <input type="text" id="spreadsheetIdInput" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" placeholder="Masukkan ID Spreadsheet">
+                    <p class="text-[11px] text-slate-400 mt-1.5">Dapatkan ID dari URL Spreadsheet Anda: <br><span class="font-mono bg-slate-100 px-1 rounded">https://docs.google.com/spreadsheets/d/<b>ID_SPREADSHEET</b>/edit</span></p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">Nama Guru (untuk tanda tangan PDF)</label>
+                    <input type="text" id="namaGuruInput" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Contoh: Budi Santoso, S.Pd.">
+                    <p class="text-[11px] text-slate-400 mt-1.5">Akan ditampilkan di bawah tanda tangan pada file PDF.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">NIP Guru</label>
+                    <input type="text" id="nipGuruInput" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" placeholder="Contoh: 199507022020121009">
+                    <p class="text-[11px] text-slate-400 mt-1.5">Ditampilkan di bawah nama guru pada file PDF.</p>
+                </div>
+
+                <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 text-amber-800 text-xs space-y-1">
+                    <p class="font-semibold flex items-center space-x-1">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600"></i>
+                        <span>Pastikan Akses Berbagi Aktif!</span>
+                    </p>
+                    <p class="text-[11px]">Pastikan dokumen Spreadsheet Anda disetel ke <b>"Siapa saja yang memiliki link dapat melihat"</b> agar data dapat diakses.</p>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
+                <button onclick="toggleConfigModal()" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Batal</button>
+                <button onclick="saveSpreadsheetConfig()" class="px-4 py-2 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-colors">Simpan & Muat Ulang</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_SHEET_ID = '1Vw5KYjqbv3a6YUCaZsNxrb-I6sXp4dUKGSippS38sSk';
+        const DEFAULT_NAMA_GURU = 'Aburrizal Hamdani Lubis, S.Pd';
+        const DEFAULT_NIP_GURU = '199507022020121009';
+
+        let currentSpreadsheetId = localStorage.getItem('gsheet_quiz_id') || DEFAULT_SHEET_ID;
+        let currentNamaGuru = localStorage.getItem('gsheet_nama_guru') || DEFAULT_NAMA_GURU;
+        let currentNipGuru = localStorage.getItem('gsheet_nip_guru') || DEFAULT_NIP_GURU;
+
+        let activeKuisId = null;
+        let processedTableData = [];
+        let filteredTableData = [];
+        let currentSortField = 'nilai';
+        let currentSortAsc = false;
+
+        // Cache data mentah agar bisa re-filter tanpa fetch ulang saat ganti kuis
+        let cachedSiswaMap = {};
+        let cachedHasilRows = [];
+        let cachedHasilCols = [];
+        let cachedKuisList = [];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+            document.getElementById('spreadsheetIdInput').value = currentSpreadsheetId;
+            document.getElementById('namaGuruInput').value = currentNamaGuru;
+            document.getElementById('nipGuruInput').value = currentNipGuru;
+            fetchDataFromSheets();
+        });
+
+        function toggleConfigModal() {
+            const modal = document.getElementById('configModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function saveSpreadsheetConfig() {
+            const inputVal = document.getElementById('spreadsheetIdInput').value.trim();
+            const namaGuruVal = document.getElementById('namaGuruInput').value.trim();
+            const nipGuruVal = document.getElementById('nipGuruInput').value.trim();
+
+            if (inputVal) {
+                currentSpreadsheetId = inputVal;
+                localStorage.setItem('gsheet_quiz_id', currentSpreadsheetId);
+            }
+
+            currentNamaGuru = namaGuruVal || DEFAULT_NAMA_GURU;
+            currentNipGuru = nipGuruVal || DEFAULT_NIP_GURU;
+            localStorage.setItem('gsheet_nama_guru', currentNamaGuru);
+            localStorage.setItem('gsheet_nip_guru', currentNipGuru);
+
+            toggleConfigModal();
+            fetchDataFromSheets();
+        }
+
+        function showAlert(title, message, type = 'error') {
+            const alertBox = document.getElementById('alertContainer');
+            const alertTitle = document.getElementById('alertTitle');
+            const alertMessage = document.getElementById('alertMessage');
+            const alertIcon = document.getElementById('alertIcon');
+
+            alertTitle.textContent = title;
+            alertMessage.innerHTML = message;
+
+            if (type === 'error') {
+                alertBox.className = "rounded-xl p-4 border bg-rose-50 border-rose-200 text-rose-800 transition-all duration-300";
+                alertIcon.innerHTML = `<i data-lucide="alert-circle" class="w-5 h-5 text-rose-600"></i>`;
+            } else {
+                alertBox.className = "rounded-xl p-4 border bg-emerald-50 border-emerald-200 text-emerald-800 transition-all duration-300";
+                alertIcon.innerHTML = `<i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>`;
+            }
+
+            alertBox.classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeAlert() {
+            document.getElementById('alertContainer').classList.add('hidden');
+        }
+
+        function parseGVizResponse(responseText) {
+            const trimmed = responseText.trim();
+
+            if (trimmed.startsWith('<') || trimmed.includes('<!DOCTYPE html>')) {
+                throw new Error("Dokumen Google Sheets tidak dapat diakses publik. Silakan buka spreadsheet -> Bagikan (Share) -> Ubah ke 'Siapa saja yang memiliki link' (Anyone with the link can view).");
+            }
+
+            let json = null;
+
+            try {
+                const google = {
+                    visualization: {
+                        Query: {
+                            setResponse: function(res) {
+                                json = res;
+                            }
+                        }
+                    }
+                };
+                const runner = new Function('google', responseText);
+                runner(google);
+            } catch (err) {
+                console.error("GViz JS Eval Error:", err);
+                throw new Error("Format response dari Google Sheets tidak valid. Pastikan ID Spreadsheet dan nama tab sheet sudah benar.");
+            }
+
+            if (!json) {
+                throw new Error("Gagal mengambil data dari Google Sheets.");
+            }
+
+            if (json.status === 'error') {
+                const errObj = json.errors?.[0];
+                const detailed = errObj?.detailed_message || errObj?.message || "Akses ditolak atau tab sheet tidak ditemukan.";
+                throw new Error(`Google Sheets Error: ${detailed}`);
+            }
+
+            const cols = (json.table && json.table.cols) 
+                ? json.table.cols.map(c => c ? (c.label || c.id || '').trim().toLowerCase() : '')
+                : [];
+
+            const rows = (json.table && json.table.rows) 
+                ? json.table.rows.map(r => {
+                    if (!r || !r.c) return [];
+                    return r.c.map(cell => {
+                        if (!cell) return '';
+                        if (cell.f !== undefined && cell.f !== null && String(cell.f).trim() !== '') {
+                            return cell.f;
+                        }
+                        if (cell.v !== null && cell.v !== undefined) {
+                            if (cell.v instanceof Date) {
+                                const day = String(cell.v.getDate()).padStart(2, '0');
+                                const month = String(cell.v.getMonth() + 1).padStart(2, '0');
+                                const year = cell.v.getFullYear();
+                                const hours = String(cell.v.getHours()).padStart(2, '0');
+                                const minutes = String(cell.v.getMinutes()).padStart(2, '0');
+                                const seconds = String(cell.v.getSeconds()).padStart(2, '0');
+                                return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+                            }
+                            return cell.v;
+                        }
+                        return '';
+                    });
+                })
+                : [];
+
+            return { cols, rows };
+        }
+
+        async function fetchSheetTab(sheetName) {
+            const url = `https://docs.google.com/spreadsheets/d/${currentSpreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Gagal menghubungi server Google Sheets (Status: ${response.status})`);
+            }
+            const text = await response.text();
+            return parseGVizResponse(text);
+        }
+
+        async function fetchDataFromSheets() {
+            const spinner = document.getElementById('loadingSpinner');
+            const emptyState = document.getElementById('emptyDataState');
+            const refreshIcon = document.getElementById('refreshIcon');
+
+            spinner.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            if (refreshIcon) refreshIcon.classList.add('animate-spin');
+            closeAlert();
+
+            try {
+                const [kuisData, siswaData, hasilData] = await Promise.all([
+                    fetchSheetTab('Kuis'),
+                    fetchSheetTab('Siswa'),
+                    fetchSheetTab('HasilKuis')
+                ]);
+
+                // 1. Process Kuis Sheet -> Build daftar Kuis (ID + Judul)
+                if (!kuisData.rows || kuisData.rows.length === 0) {
+                    throw new Error("Sheet 'Kuis' tidak memiliki baris data.");
+                }
+
+                let kuisIdColIdx = kuisData.cols.findIndex(c => c.includes('kuis') || c.includes('id'));
+                if (kuisIdColIdx === -1) kuisIdColIdx = 0;
+
+                let kuisTitleColIdx = kuisData.cols.findIndex(c => c.includes('nama') || c.includes('judul') || c.includes('title'));
+
+                cachedKuisList = [];
+                kuisData.rows.forEach(r => {
+                    const kId = String(r[kuisIdColIdx] || '').trim();
+                    if (!kId) return;
+                    const kTitle = kuisTitleColIdx !== -1 && r[kuisTitleColIdx] 
+                        ? String(r[kuisTitleColIdx]).trim() 
+                        : `Kuis #${kId}`;
+                    if (!cachedKuisList.find(k => k.id === kId)) {
+                        cachedKuisList.push({ id: kId, title: kTitle });
+                    }
+                });
+
+                if (cachedKuisList.length === 0) {
+                    throw new Error("Sheet 'Kuis' tidak memiliki Kuis ID yang valid.");
+                }
+
+                // 2. Process Siswa Sheet -> Build Map (siswaID -> Nama)
+                let siswaIdColIdx = siswaData.cols.findIndex(c => c.includes('siswaid') || c.includes('nis') || c.includes('id'));
+                if (siswaIdColIdx === -1) siswaIdColIdx = 0;
+
+                let siswaNamaColIdx = siswaData.cols.findIndex(c => c.includes('nama') || c.includes('name'));
+                if (siswaNamaColIdx === -1) siswaNamaColIdx = 1;
+
+                cachedSiswaMap = {};
+                siswaData.rows.forEach(r => {
+                    const sId = String(r[siswaIdColIdx] || '').trim();
+                    const sNama = String(r[siswaNamaColIdx] || '').trim();
+                    if (sId) {
+                        cachedSiswaMap[sId] = sNama || sId;
+                    }
+                });
+
+                // 3. Cache raw HasilKuis data
+                cachedHasilCols = hasilData.cols;
+                cachedHasilRows = hasilData.rows;
+
+                // 4. Populate dropdown kuis
+                populateKuisDropdown();
+
+                // 5. Set kuis aktif default = kuis terakhir
+                const currentSelected = document.getElementById('kuisSelect').value;
+                if (currentSelected && cachedKuisList.find(k => k.id === currentSelected)) {
+                    activeKuisId = currentSelected;
+                } else {
+                    activeKuisId = cachedKuisList[cachedKuisList.length - 1].id;
+                    document.getElementById('kuisSelect').value = activeKuisId;
+                }
+
+                // 6. Update banner & render
+                updateKuisBanner();
+                processAndRenderActiveKuis();
+
+            } catch (err) {
+                console.error("Fetch Error:", err);
+                showAlert(
+                    "Gagal Memuat Data Google Sheet",
+                    `Error: ${err.message}. <br><br><b>Langkah Penanganan:</b><br>
+                    1. Pastikan nama tab sheet adalah <b>"Kuis"</b>, <b>"Siswa"</b>, dan <b>"HasilKuis"</b>.<br>
+                    2. Pastikan dokumen Google Sheet dipublikasikan / disetel ke <i>"Siapa saja yang memiliki link dapat melihat"</i>.`
+                );
+                processedTableData = [];
+                applyFiltersAndRender();
+            } finally {
+                spinner.classList.add('hidden');
+                if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+            }
+        }
+
+        function populateKuisDropdown() {
+            const select = document.getElementById('kuisSelect');
+            select.innerHTML = '';
+            cachedKuisList.forEach(k => {
+                const opt = document.createElement('option');
+                opt.value = k.id;
+                opt.textContent = `${k.title} (${k.id})`;
+                select.appendChild(opt);
+            });
+        }
+
+        function handleKuisChange() {
+            const selected = document.getElementById('kuisSelect').value;
+            if (!selected) return;
+            activeKuisId = selected;
+            updateKuisBanner();
+            processAndRenderActiveKuis();
+        }
+
+        function updateKuisBanner() {
+            const kuis = cachedKuisList.find(k => k.id === activeKuisId);
+            const title = kuis ? kuis.title : `Kuis #${activeKuisId}`;
+
+            document.getElementById('activeKuisTitle').textContent = title;
+            document.getElementById('activeKuisIdBadge').textContent = activeKuisId;
+            document.getElementById('activeKuisMeta').textContent = `Menampilkan hasil kuis (Kuis ID: ${activeKuisId})`;
+        }
+
+        function processAndRenderActiveKuis() {
+            let hkKuisIdColIdx = cachedHasilCols.findIndex(c => c.includes('kuis'));
+            if (hkKuisIdColIdx === -1) hkKuisIdColIdx = 0;
+
+            let hkSiswaIdColIdx = cachedHasilCols.findIndex(c => c.includes('siswa') || c.includes('nis'));
+            if (hkSiswaIdColIdx === -1) hkSiswaIdColIdx = 1;
+
+            let hkNilaiColIdx = cachedHasilCols.findIndex(c => c.includes('nilai') || c.includes('skor') || c.includes('score'));
+            if (hkNilaiColIdx === -1) hkNilaiColIdx = 2;
+
+            let hkWaktuColIdx = cachedHasilCols.findIndex(c => 
+                c.includes('waktu') || c.includes('tanggal') || c.includes('timestamp') || 
+                c.includes('submit') || c.includes('tgl') || c.includes('time') || c.includes('date')
+            );
+
+            const hasilKuisMap = new Map();
+
+            cachedHasilRows.forEach(r => {
+                const rowKuisId = String(r[hkKuisIdColIdx] || '').trim();
+                if (rowKuisId !== activeKuisId) return;
+
+                const siswaId = String(r[hkSiswaIdColIdx] || '').trim();
+                const nilai = parseFloat(r[hkNilaiColIdx]) || 0;
+
+                let rawWaktu = hkWaktuColIdx !== -1 && r[hkWaktuColIdx] !== undefined && r[hkWaktuColIdx] !== null 
+                    ? String(r[hkWaktuColIdx]).trim() 
+                    : '';
+                if (rawWaktu === 'null' || rawWaktu === 'undefined') rawWaktu = '';
+                const waktu = rawWaktu || '-';
+
+                const existingRecord = hasilKuisMap.get(siswaId);
+                const attemptCount = existingRecord ? existingRecord.attemptCount + 1 : 1;
+
+                hasilKuisMap.set(siswaId, {
+                    siswaId,
+                    nilai,
+                    waktu,
+                    attemptCount
+                });
+            });
+
+            processedTableData = [];
+            Object.keys(cachedSiswaMap).forEach(siswaId => {
+                const namaSiswa = cachedSiswaMap[siswaId] || siswaId || 'Tanpa Nama';
+                const hasil = hasilKuisMap.get(siswaId);
+
+                if (hasil) {
+                    processedTableData.push({
+                        siswaId: siswaId,
+                        nama: namaSiswa,
+                        nilai: hasil.nilai,
+                        status: hasil.nilai >= 70 ? 'LULUS' : 'REMEDIAL',
+                        waktu: hasil.waktu,
+                        attemptCount: hasil.attemptCount,
+                        sudahMengerjakan: true
+                    });
+                } else {
+                    processedTableData.push({
+                        siswaId: siswaId,
+                        nama: namaSiswa,
+                        nilai: 0,
+                        status: 'BELUM',
+                        waktu: '-',
+                        attemptCount: 0,
+                        sudahMengerjakan: false
+                    });
+                }
+            });
+
+            applyFiltersAndRender();
+        }
+
+        function applyFiltersAndRender() {
+            const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
+            const filterStatus = document.getElementById('filterStatus').value;
+
+            filteredTableData = processedTableData.filter(item => {
+                const matchesSearch = item.nama.toLowerCase().includes(searchVal) || item.siswaId.toLowerCase().includes(searchVal);
+                const matchesStatus = filterStatus === 'ALL' || item.status === filterStatus;
+                return matchesSearch && matchesStatus;
+            });
+
+            filteredTableData.sort((a, b) => {
+                let valA = a[currentSortField];
+                let valB = b[currentSortField];
+
+                if (typeof valA === 'string') {
+                    return currentSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                }
+                return currentSortAsc ? valA - valB : valB - valA;
+            });
+
+            renderTable();
+            renderStats();
+        }
+
+        function handleSearch() {
+            applyFiltersAndRender();
+        }
+
+        function handleFilter() {
+            applyFiltersAndRender();
+        }
+
+        function sortTable(field) {
+            if (currentSortField === field) {
+                currentSortAsc = !currentSortAsc;
+            } else {
+                currentSortField = field;
+                currentSortAsc = field === 'nama';
+            }
+            applyFiltersAndRender();
+        }
+
+        function renderStats() {
+            const total = processedTableData.length;
+            if (total === 0) {
+                document.getElementById('statTotalSiswa').textContent = '0';
+                document.getElementById('statRataRata').textContent = '0';
+                document.getElementById('statNilaiMax').textContent = '0';
+                document.getElementById('statPersenLulus').textContent = '0%';
+                return;
+            }
+
+            const sudahMengerjakanData = processedTableData.filter(d => d.sudahMengerjakan);
+            const totalNilai = sudahMengerjakanData.reduce((acc, curr) => acc + curr.nilai, 0);
+            const avg = sudahMengerjakanData.length > 0 ? (totalNilai / sudahMengerjakanData.length).toFixed(1) : '0';
+            const max = sudahMengerjakanData.length > 0 ? Math.max(...sudahMengerjakanData.map(d => d.nilai)) : 0;
+            const lulusCount = sudahMengerjakanData.filter(d => d.status === 'LULUS').length;
+            const persenLulus = sudahMengerjakanData.length > 0 ? ((lulusCount / sudahMengerjakanData.length) * 100).toFixed(0) : '0';
+
+            document.getElementById('statTotalSiswa').textContent = total;
+            document.getElementById('statRataRata').textContent = avg;
+            document.getElementById('statNilaiMax').textContent = max;
+            document.getElementById('statPersenLulus').textContent = `${persenLulus}%`;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            const emptyState = document.getElementById('emptyDataState');
+            const showingCount = document.getElementById('showingCount');
+
+            tbody.innerHTML = '';
+
+            if (filteredTableData.length === 0) {
+                emptyState.classList.remove('hidden');
+                showingCount.textContent = 'Menampilkan 0 data';
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            showingCount.textContent = `Menampilkan ${filteredTableData.length} dari ${processedTableData.length} data siswa`;
+
+            filteredTableData.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/80 transition-colors";
+
+                const isLulus = row.status === 'LULUS';
+                const isRemedial = row.status === 'REMEDIAL';
+                const statusBadge = isLulus
+                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span> Lulus
+                       </span>`
+                    : isRemedial
+                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
+                         <span class="w-1.5 h-1.5 rounded-full bg-rose-500 mr-1.5"></span> Remedial
+                       </span>`
+                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                         <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span> Belum Mengerjakan
+                       </span>`;
+
+                const attemptBadge = row.attemptCount > 1 
+                    ? `<span class="ml-2 inline-flex items-center text-[10px] font-medium bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full" title="Siswa ini mengerjakan kuis ${row.attemptCount} kali. Menampilkan hasil terakhir.">
+                         ${row.attemptCount}x percobaan
+                       </span>`
+                    : '';
+
+                const nilaiDisplay = row.sudahMengerjakan ? row.nilai : '<span class="text-slate-400 font-normal">-</span>';
+
+                tr.innerHTML = `
+                    <td class="py-4 px-6 text-slate-400 font-mono text-xs">${index + 1}</td>
+                    <td class="py-4 px-6 font-semibold text-slate-900 flex items-center flex-wrap gap-1">
+                        <span>${row.nama}</span>
+                        ${attemptBadge}
+                    </td>
+                    <td class="py-4 px-6 font-mono text-xs text-slate-500">${row.siswaId || '-'}</td>
+                    <td class="py-4 px-6 font-bold text-slate-900">${nilaiDisplay}</td>
+                    <td class="py-4 px-6">${statusBadge}</td>
+                    <td class="py-4 px-6 text-slate-500 text-xs">${row.waktu}</td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function exportToCSV() {
+            if (filteredTableData.length === 0) {
+                showAlert("Peringatan", "Tidak ada data yang dapat diekspor.", "error");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "No,Nama Siswa,ID Siswa,Nilai,Status,Waktu Penyerahan\n";
+
+            filteredTableData.forEach((row, i) => {
+                const nilaiExport = row.sudahMengerjakan ? row.nilai : '';
+                const line = `"${i + 1}","${row.nama}","${row.siswaId}","${nilaiExport}","${row.status}","${row.waktu}"`;
+                csvContent += line + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Hasil_Kuis_${activeKuisId || 'Terbaru'}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ==================== EXPORT EXCEL (.xlsx) ====================
+        function exportToExcel() {
+            if (filteredTableData.length === 0) {
+                showAlert("Peringatan", "Tidak ada data yang dapat diekspor.", "error");
+                return;
+            }
+
+            const excelData = [
+                ["No", "Nama Siswa", "ID Siswa", "Nilai", "Status", "Waktu Penyerahan"]
+            ];
+
+            filteredTableData.forEach((row, i) => {
+                excelData.push([
+                    i + 1,
+                    row.nama,
+                    row.siswaId,
+                    row.sudahMengerjakan ? row.nilai : '',
+                    row.status,
+                    row.waktu
+                ]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+            ws['!cols'] = [
+                { wch: 5 },
+                { wch: 25 },
+                { wch: 15 },
+                { wch: 8 },
+                { wch: 20 },
+                { wch: 22 }
+            ];
+
+            XLSX.utils.book_append_sheet(wb, ws, "Hasil Kuis");
+            XLSX.writeFile(wb, `Hasil_Kuis_${activeKuisId || 'Terbaru'}.xlsx`);
+        }
+
+        // ==================== EXPORT PDF ====================
+        function exportToPDF() {
+            if (filteredTableData.length === 0) {
+                showAlert("Peringatan", "Tidak ada data yang dapat diekspor.", "error");
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            // A4 portrait: 210 x 297 mm
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageWidth = doc.internal.pageSize.width;   // 210
+            const pageHeight = doc.internal.pageSize.height; // 297
+
+            // Margin standar (kiri & kanan sama = 14mm)
+            const marginX = 14;
+            const contentWidth = pageWidth - (marginX * 2); // 182mm
+
+            // ==================== HEADER ====================
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'bold');
+            doc.text("Dashboard Hasil Kuis", marginX, 15);
+
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Kuis ID: ${activeKuisId || '-'}`, marginX, 22);
+            doc.text(`Tanggal Export: ${new Date().toLocaleString('id-ID')}`, marginX, 27);
+
+            // ==================== STATISTIK RINGKAS ====================
+            const total = processedTableData.length;
+            const sudahMengerjakanData = processedTableData.filter(d => d.sudahMengerjakan);
+            const avg = sudahMengerjakanData.length > 0
+                ? (sudahMengerjakanData.reduce((a, c) => a + c.nilai, 0) / sudahMengerjakanData.length).toFixed(1)
+                : 0;
+            const max = sudahMengerjakanData.length > 0
+                ? Math.max(...sudahMengerjakanData.map(d => d.nilai))
+                : 0;
+            const lulusCount = sudahMengerjakanData.filter(d => d.status === 'LULUS').length;
+            const persenLulus = sudahMengerjakanData.length > 0
+                ? ((lulusCount / sudahMengerjakanData.length) * 100).toFixed(0)
+                : 0;
+
+            doc.setFontSize(9);
+            doc.text(
+                `Total Siswa: ${total}   |   Rata-rata: ${avg}   |   Tertinggi: ${max}   |   Lulus: ${persenLulus}%`,
+                marginX, 33
+            );
+
+            // ==================== TABEL DATA ====================
+            const tableBody = filteredTableData.map((row, i) => [
+                i + 1,
+                row.nama,
+                row.siswaId || '-',
+                row.sudahMengerjakan ? row.nilai : '-',
+                row.status,
+                row.waktu
+            ]);
+
+            // Lebar kolom dihitung agar total = 182mm (pas area cetak)
+            const colWidths = {
+                0: 10,   // No
+                1: 52,   // Nama
+                2: 25,   // ID
+                3: 15,   // Nilai
+                4: 25,   // Status
+                5: 55    // Waktu
+            }; // Total = 182mm
+
+            doc.autoTable({
+                startY: 38,
+                margin: { left: marginX, right: marginX },
+                head: [["No", "Nama Siswa", "ID Siswa", "Nilai", "Status", "Waktu Penyerahan"]],
+                body: tableBody,
+                theme: 'grid',
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 2,
+                    overflow: 'linebreak',
+                    valign: 'middle'
+                },
+                headStyles: {
+                    fillColor: [79, 70, 229],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    halign: 'center'
+                },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: {
+                    0: { cellWidth: colWidths[0], halign: 'center' },
+                    1: { cellWidth: colWidths[1] },
+                    2: { cellWidth: colWidths[2], halign: 'center' },
+                    3: { cellWidth: colWidths[3], halign: 'center' },
+                    4: { cellWidth: colWidths[4], halign: 'center' },
+                    5: { cellWidth: colWidths[5] }
+                }
+            });
+
+            // ==================== BLOK TANDA TANGAN ====================
+            // Presisi: lebar blok = 60mm, posisi X = margin kanan area cetak - 60mm
+            const signBlockWidth = 60;
+            const signX = pageWidth - marginX - signBlockWidth; // = 210 - 14 - 60 = 136mm
+            const signAreaHeight = 45; // tinggi total blok tanda tangan (mm)
+
+            let signY = doc.lastAutoTable.finalY + 12;
+
+            // Jika tidak muat di halaman ini, pindah halaman baru
+            if (signY + signAreaHeight > pageHeight - marginX) {
+                doc.addPage();
+                signY = marginX + 10;
+            }
+
+            const namaGuru = currentNamaGuru || DEFAULT_NAMA_GURU;
+            const nipGuru = currentNipGuru || DEFAULT_NIP_GURU;
+
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+
+            // Baris 1: "Mengetahui,"
+            doc.text("Mengetahui,", signX, signY);
+            // Baris 2: "Guru" (sesuai permintaan)
+            doc.text("Guru", signX, signY + 5);
+
+            // Gambar tanda tangan
+            const img = new Image();
+            img.src = 'tanda_tangan.png';
+
+            const drawSignatureBlock = (drawImage) => {
+                if (drawImage) {
+                    // Gambar tanda tangan: 40 x 20 mm, di bawah teks "Guru"
+                    doc.addImage(img, 'PNG', signX, signY + 8, 40, 20);
+                }
+
+                // Nama guru (bold)
+                const namaY = signY + 32;
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                doc.text(namaGuru, signX, namaY);
+
+                // Garis bawah nama (presisi: dari X sampai X + lebar blok)
+                doc.setLineWidth(0.3);
+                doc.line(signX, namaY + 1.5, signX + signBlockWidth, namaY + 1.5);
+
+                // NIP (di bawah garis)
+                doc.setFont(undefined, 'normal');
+                doc.setFontSize(9);
+                doc.text(`NIP. ${nipGuru}`, signX, namaY + 6);
+
+                doc.save(`Hasil_Kuis_${activeKuisId || 'Terbaru'}.pdf`);
+            };
+
+            img.onload = () => drawSignatureBlock(true);
+            img.onerror = () => {
+                console.warn("tanda_tangan.png tidak ditemukan di folder yang sama.");
+                drawSignatureBlock(false);
+            };
+        }
+    </script>
+</body>
+</html>
