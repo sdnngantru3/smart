@@ -161,13 +161,11 @@
                         <span>CSV</span>
                     </button>
 
-                    <!-- Tombol Download Excel -->
                     <button onclick="exportToExcel()" class="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-medium shadow-sm transition-colors">
                         <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
                         <span>Excel</span>
                     </button>
 
-                    <!-- Tombol Download PDF -->
                     <button onclick="exportToPDF()" class="flex items-center space-x-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-medium shadow-sm transition-colors">
                         <i data-lucide="file-text" class="w-4 h-4"></i>
                         <span>PDF</span>
@@ -227,9 +225,9 @@
         </div>
     </main>
 
-    <!-- Modal Pengaturan Spreadsheet ID -->
+    <!-- Modal Pengaturan Spreadsheet ID & Identitas Guru -->
     <div id="configModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 transform transition-all">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 transform transition-all max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between pb-4 border-b border-slate-100">
                 <h3 class="text-base font-bold text-slate-900 flex items-center space-x-2">
                     <i data-lucide="settings" class="w-5 h-5 text-indigo-600"></i>
@@ -245,6 +243,18 @@
                     <label class="block text-xs font-medium text-slate-700 mb-1">Spreadsheet ID</label>
                     <input type="text" id="spreadsheetIdInput" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" placeholder="Masukkan ID Spreadsheet">
                     <p class="text-[11px] text-slate-400 mt-1.5">Dapatkan ID dari URL Spreadsheet Anda: <br><span class="font-mono bg-slate-100 px-1 rounded">https://docs.google.com/spreadsheets/d/<b>ID_SPREADSHEET</b>/edit</span></p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">Nama Guru (untuk tanda tangan PDF)</label>
+                    <input type="text" id="namaGuruInput" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Contoh: Budi Santoso, S.Pd.">
+                    <p class="text-[11px] text-slate-400 mt-1.5">Akan ditampilkan di bawah tanda tangan pada file PDF.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">NIP Guru</label>
+                    <input type="text" id="nipGuruInput" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" placeholder="Contoh: 199507022020121009">
+                    <p class="text-[11px] text-slate-400 mt-1.5">Ditampilkan di bawah nama guru pada file PDF.</p>
                 </div>
 
                 <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 text-amber-800 text-xs space-y-1">
@@ -265,7 +275,12 @@
 
     <script>
         const DEFAULT_SHEET_ID = '1Vw5KYjqbv3a6YUCaZsNxrb-I6sXp4dUKGSippS38sSk';
+        const DEFAULT_NAMA_GURU = 'Aburrizal Hamdani Lubis, S.Pd';
+        const DEFAULT_NIP_GURU = '199507022020121009';
+
         let currentSpreadsheetId = localStorage.getItem('gsheet_quiz_id') || DEFAULT_SHEET_ID;
+        let currentNamaGuru = localStorage.getItem('gsheet_nama_guru') || DEFAULT_NAMA_GURU;
+        let currentNipGuru = localStorage.getItem('gsheet_nip_guru') || DEFAULT_NIP_GURU;
 
         let activeKuisId = null;
         let processedTableData = [];
@@ -279,12 +294,13 @@
         let cachedHasilCols = [];
         let cachedKuisList = [];
 
-        // Initialize icons and data on window load
         window.addEventListener('DOMContentLoaded', () => {
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
             document.getElementById('spreadsheetIdInput').value = currentSpreadsheetId;
+            document.getElementById('namaGuruInput').value = currentNamaGuru;
+            document.getElementById('nipGuruInput').value = currentNipGuru;
             fetchDataFromSheets();
         });
 
@@ -295,12 +311,21 @@
 
         function saveSpreadsheetConfig() {
             const inputVal = document.getElementById('spreadsheetIdInput').value.trim();
+            const namaGuruVal = document.getElementById('namaGuruInput').value.trim();
+            const nipGuruVal = document.getElementById('nipGuruInput').value.trim();
+
             if (inputVal) {
                 currentSpreadsheetId = inputVal;
                 localStorage.setItem('gsheet_quiz_id', currentSpreadsheetId);
-                toggleConfigModal();
-                fetchDataFromSheets();
             }
+
+            currentNamaGuru = namaGuruVal || DEFAULT_NAMA_GURU;
+            currentNipGuru = nipGuruVal || DEFAULT_NIP_GURU;
+            localStorage.setItem('gsheet_nama_guru', currentNamaGuru);
+            localStorage.setItem('gsheet_nip_guru', currentNipGuru);
+
+            toggleConfigModal();
+            fetchDataFromSheets();
         }
 
         function showAlert(title, message, type = 'error') {
@@ -789,8 +814,6 @@
         }
 
         // ==================== EXPORT PDF ====================
-        // CATATAN: Fungsi ini SAMA PERSIS seperti di file "laporan - Copy.html"
-        // (tanpa judul kuis tambahan, header tidak digeser)
         function exportToPDF() {
             if (filteredTableData.length === 0) {
                 showAlert("Peringatan", "Tidak ada data yang dapat diekspor.", "error");
@@ -848,7 +871,50 @@
                 }
             });
 
-            doc.save(`Hasil_Kuis_${activeKuisId || 'Terbaru'}.pdf`);
+            // ==================== BLOK TANDA TANGAN ====================
+            const finalY = doc.lastAutoTable.finalY + 12;
+            const pageHeight = doc.internal.pageSize.height;
+            const pageWidth = doc.internal.pageSize.width;
+
+            let signY = finalY;
+            if (signY + 50 > pageHeight - 10) {
+                doc.addPage();
+                signY = 20;
+            }
+
+            const signX = pageWidth - 75;
+
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            doc.text("Mengetahui,", signX, signY);
+            doc.text("Guru", signX, signY + 5);
+
+            const namaGuru = currentNamaGuru || DEFAULT_NAMA_GURU;
+            const nipGuru = currentNipGuru || DEFAULT_NIP_GURU;
+
+            const img = new Image();
+            img.src = 'tanda_tangan.png';
+
+            img.onload = function() {
+                doc.addImage(img, 'PNG', signX, signY + 8, 35, 18);
+
+                doc.text(namaGuru, signX, signY + 32);
+                doc.setLineWidth(0.3);
+                doc.line(signX, signY + 33.5, signX + 60, signY + 33.5);
+                doc.text(`NIP. ${nipGuru}`, signX, signY + 38);
+
+                doc.save(`Hasil_Kuis_${activeKuisId || 'Terbaru'}.pdf`);
+            };
+
+            img.onerror = function() {
+                console.warn("tanda_tangan.png tidak ditemukan di folder yang sama.");
+                doc.text(namaGuru, signX, signY + 32);
+                doc.setLineWidth(0.3);
+                doc.line(signX, signY + 33.5, signX + 60, signY + 33.5);
+                doc.text(`NIP. ${nipGuru}`, signX, signY + 38);
+
+                doc.save(`Hasil_Kuis_${activeKuisId || 'Terbaru'}.pdf`);
+            };
         }
     </script>
 </body>
