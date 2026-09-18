@@ -331,14 +331,12 @@
         function parseGVizResponse(responseText) {
             const trimmed = responseText.trim();
 
-            // 1. Detect if Google returned an HTML page (e.g., Access Denied / Login Screen)
             if (trimmed.startsWith('<') || trimmed.includes('<!DOCTYPE html>')) {
                 throw new Error("Dokumen Google Sheets tidak dapat diakses publik. Silakan buka spreadsheet -> Bagikan (Share) -> Ubah ke 'Siapa saja yang memiliki link' (Anyone with the link can view).");
             }
 
             let json = null;
 
-            // 2. Safely evaluate GViz JavaScript response using scoped Function execution
             try {
                 const google = {
                     visualization: {
@@ -442,7 +440,6 @@
                     const kTitle = kuisTitleColIdx !== -1 && r[kuisTitleColIdx] 
                         ? String(r[kuisTitleColIdx]).trim() 
                         : `Kuis #${kId}`;
-                    // Hindari duplikat ID
                     if (!cachedKuisList.find(k => k.id === kId)) {
                         cachedKuisList.push({ id: kId, title: kTitle });
                     }
@@ -468,14 +465,14 @@
                     }
                 });
 
-                // 3. Cache raw HasilKuis data (belum difilter)
+                // 3. Cache raw HasilKuis data
                 cachedHasilCols = hasilData.cols;
                 cachedHasilRows = hasilData.rows;
 
-                // 4. Populate dropdown kuis (urut sesuai urutan sheet)
+                // 4. Populate dropdown kuis
                 populateKuisDropdown();
 
-                // 5. Set kuis aktif default = kuis terakhir (paling baru) jika belum ada pilihan
+                // 5. Set kuis aktif default = kuis terakhir
                 const currentSelected = document.getElementById('kuisSelect').value;
                 if (currentSelected && cachedKuisList.find(k => k.id === currentSelected)) {
                     activeKuisId = currentSelected;
@@ -484,7 +481,7 @@
                     document.getElementById('kuisSelect').value = activeKuisId;
                 }
 
-                // 6. Update banner & render data
+                // 6. Update banner & render
                 updateKuisBanner();
                 processAndRenderActiveKuis();
 
@@ -533,7 +530,6 @@
         }
 
         function processAndRenderActiveKuis() {
-            // Deteksi index kolom di HasilKuis
             let hkKuisIdColIdx = cachedHasilCols.findIndex(c => c.includes('kuis'));
             if (hkKuisIdColIdx === -1) hkKuisIdColIdx = 0;
 
@@ -548,7 +544,6 @@
                 c.includes('submit') || c.includes('tgl') || c.includes('time') || c.includes('date')
             );
 
-            // Map hasil kuis untuk kuis aktif
             const hasilKuisMap = new Map();
 
             cachedHasilRows.forEach(r => {
@@ -575,7 +570,6 @@
                 });
             });
 
-            // Gabungkan dengan seluruh siswa
             processedTableData = [];
             Object.keys(cachedSiswaMap).forEach(siswaId => {
                 const namaSiswa = cachedSiswaMap[siswaId] || siswaId || 'Tanpa Nama';
@@ -617,7 +611,6 @@
                 return matchesSearch && matchesStatus;
             });
 
-            // Sort Data
             filteredTableData.sort((a, b) => {
                 let valA = a[currentSortField];
                 let valB = b[currentSortField];
@@ -739,11 +732,7 @@
                 return;
             }
 
-            const kuis = cachedKuisList.find(k => k.id === activeKuisId);
-            const kuisTitle = kuis ? kuis.title : `Kuis_${activeKuisId}`;
-
             let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += `"Kuis ID: ${activeKuisId} - ${kuisTitle}"\n`;
             csvContent += "No,Nama Siswa,ID Siswa,Nilai,Status,Waktu Penyerahan\n";
 
             filteredTableData.forEach((row, i) => {
@@ -768,12 +757,7 @@
                 return;
             }
 
-            const kuis = cachedKuisList.find(k => k.id === activeKuisId);
-            const kuisTitle = kuis ? kuis.title : `Kuis #${activeKuisId}`;
-
             const excelData = [
-                [`Kuis ID: ${activeKuisId} - ${kuisTitle}`],
-                [],
                 ["No", "Nama Siswa", "ID Siswa", "Nilai", "Status", "Waktu Penyerahan"]
             ];
 
@@ -805,14 +789,13 @@
         }
 
         // ==================== EXPORT PDF ====================
+        // CATATAN: Fungsi ini SAMA PERSIS seperti di file "laporan - Copy.html"
+        // (tanpa judul kuis tambahan, header tidak digeser)
         function exportToPDF() {
             if (filteredTableData.length === 0) {
                 showAlert("Peringatan", "Tidak ada data yang dapat diekspor.", "error");
                 return;
             }
-
-            const kuis = cachedKuisList.find(k => k.id === activeKuisId);
-            const kuisTitle = kuis ? kuis.title : `Kuis #${activeKuisId}`;
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('p', 'mm', 'a4');
@@ -821,24 +804,21 @@
             doc.setFontSize(16);
             doc.setFont(undefined, 'bold');
             doc.text("Dashboard Hasil Kuis", 14, 15);
-            doc.setFontSize(11);
-            doc.setFont(undefined, 'bold');
-            doc.text(`${kuisTitle}`, 14, 22);
-            doc.setFontSize(9);
+            doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
-            doc.text(`Kuis ID: ${activeKuisId || '-'}`, 14, 28);
-            doc.text(`Tanggal Export: ${new Date().toLocaleString('id-ID')}`, 14, 33);
+            doc.text(`Kuis ID: ${activeKuisId || '-'}`, 14, 22);
+            doc.text(`Tanggal Export: ${new Date().toLocaleString('id-ID')}`, 14, 27);
 
             // Statistik ringkas
-            const sudahMengerjakanData = processedTableData.filter(d => d.sudahMengerjakan);
             const total = processedTableData.length;
+            const sudahMengerjakanData = processedTableData.filter(d => d.sudahMengerjakan);
             const avg = sudahMengerjakanData.length > 0 ? (sudahMengerjakanData.reduce((a, c) => a + c.nilai, 0) / sudahMengerjakanData.length).toFixed(1) : 0;
             const max = sudahMengerjakanData.length > 0 ? Math.max(...sudahMengerjakanData.map(d => d.nilai)) : 0;
             const lulusCount = sudahMengerjakanData.filter(d => d.status === 'LULUS').length;
             const persenLulus = sudahMengerjakanData.length > 0 ? ((lulusCount / sudahMengerjakanData.length) * 100).toFixed(0) : 0;
 
             doc.setFontSize(9);
-            doc.text(`Total Siswa: ${total}   |   Rata-rata: ${avg}   |   Tertinggi: ${max}   |   Lulus: ${persenLulus}%`, 14, 39);
+            doc.text(`Total Siswa: ${total}   |   Rata-rata: ${avg}   |   Tertinggi: ${max}   |   Lulus: ${persenLulus}%`, 14, 33);
 
             // Tabel data
             const tableBody = filteredTableData.map((row, i) => [
@@ -851,7 +831,7 @@
             ]);
 
             doc.autoTable({
-                startY: 44,
+                startY: 38,
                 head: [["No", "Nama Siswa", "ID Siswa", "Nilai", "Status", "Waktu Penyerahan"]],
                 body: tableBody,
                 theme: 'grid',
@@ -863,7 +843,7 @@
                     1: { cellWidth: 40 },
                     2: { cellWidth: 25 },
                     3: { cellWidth: 15 },
-                    4: { cellWidth: 30 },
+                    4: { cellWidth: 20 },
                     5: { cellWidth: 35 }
                 }
             });
