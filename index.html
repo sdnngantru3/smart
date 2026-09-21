@@ -2730,19 +2730,44 @@ function clearAllData() {
       });
       if (!res.success) { holder.innerHTML = ''; return; }
       const menus = (Array.isArray(res.data) ? res.data : []).map(menu => ({
-        ID: String(menu.ID || ''),
-        NamaMenu: String(menu.NamaMenu || ''),
-        Ikon: String(menu.Ikon || 'fa-solid fa-link'),
-        Tipe: String(menu.Tipe || 'file'),
-        Target: String(menu.Target || ''),
-        TargetTab: String(menu.TargetTab || 'same'),
-        Status: String(menu.Status || 'aktif'),
-        DashboardSiswa: menu.DashboardSiswa === true || String(menu.DashboardSiswa || '').toLowerCase() === 'true'
+  ID: String(menu.ID || ''),
+  NamaMenu: String(menu.NamaMenu || ''),
+  Ikon: String(menu.Ikon || 'fa-solid fa-link'),
+  Tipe: String(menu.Tipe || 'file'),
+  Target: String(menu.Target || ''),
+  TargetTab: String(menu.TargetTab || 'same'),
+  Status: String(menu.Status || 'aktif'),
+  DashboardSiswa: menu.DashboardSiswa === true || String(menu.DashboardSiswa || '').toLowerCase() === 'true'
+})).filter(menu => menu.DashboardSiswa);
+
+// ✅ FILTER KHUSUS SISWA
+const filteredMenus = menus.filter(m => m.DashboardSiswa);
+
+// ❗ PASTIKAN BAGIAN INI DIGANTI
+holder.innerHTML = '';
+filteredMenus.forEach(menu => {
+  const btn = document.createElement('button');
+  btn.className = "nav-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition";
+
+  btn.innerHTML = `
+    <i class="${menu.Ikon} w-4 text-center"></i> ${menu.NamaMenu}
+  `;
+
+  btn.onclick = () => {
+    if (menu.Tipe === 'file') {
+      window.open(menu.Target, menu.TargetTab === 'new' ? '_blank' : '_self');
+    } else {
+      navigateTo(menu.Target);
+    }
+  };
+
+  holder.appendChild(btn);
+});
       })).filter(menu => {
         const aktif = String(menu.Status || '').trim().toLowerCase() === 'aktif';
         const tampilSiswa = menu.DashboardSiswa === true;
         const isPerpustakaan = String(menu.NamaMenu || '').trim().toLowerCase() === 'perpustakaan';
-        return aktif && (tampilSiswa || isPerpustakaan);
+        return tampilSiswa;
       });
       holder.innerHTML = '';
       menus.forEach(menu => {
