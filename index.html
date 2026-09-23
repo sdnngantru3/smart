@@ -246,7 +246,7 @@ function handleRequest(action, params, body) {
     else if (action === 'saveMenuGuru') result = saveMenuGuru(body || {});
     else if (action === 'deleteMenuGuru') result = deleteMenuGuru(body || {});
     else if (action === 'reorderMenuGuru') result = reorderMenuGuru(body || {});
-    else if (action === 'getDashboardData') result = getDashboardData();
+    else if (action === 'getDashboardData') result = getDashboardData(body || {});
     else if (action === 'syncDatabase') result = syncDatabase();
     else if (action === 'logAktivitas') result = logAktivitas_(getRequestSpreadsheet_(), body.username || body.User || 'Sistem', body.aktivitas || body.Aktivitas || 'Aktivitas aplikasi');
     else if (action === 'getStudents') result = getStudentsByClass((body &amp;&amp; body.kelas) || params.kelas || '');
@@ -510,11 +510,13 @@ function getRecentActivities_(ss, limit) {
   } catch (e) { return []; }
 }
 
-function getDashboardData() {
+function getDashboardData(body) {
   // Dashboard mengambil sumber data utama dalam SATU request HTTP.
   // Ini mengurangi antrean beberapa fetch paralel ke Web App Apps Script,
   // sehingga dashboard lebih cepat dan lebih konsisten saat dibuka ulang.
-  var ss = getRequestSpreadsheet_();
+  body = body || {};
+  var dashboardSpreadsheetId = String(body.spreadsheetId || body.SPREADSHEET_ID || '').trim();
+  var ss = dashboardSpreadsheetId ? getSpreadsheetById_(dashboardSpreadsheetId) : getRequestSpreadsheet_();
   return {
     success: true,
     message: 'Data dashboard berhasil dimuat.',
@@ -956,7 +958,7 @@ function getMenuGuru(body) {
       TargetTab: normalizeMenuTargetTab_(m.TargetTab),
       Urutan: Number(m.Urutan || 0),
       Status: normalizeMenuStatus_(m.Status),
-      DashboardGuru: m.DashboardGuru === true || String(m.DashboardGuru || '').trim().toLowerCase() === 'true',
+      DashboardGuru: m.DashboardGuru === '' || m.DashboardGuru == null ? true : (m.DashboardGuru === true || String(m.DashboardGuru).trim().toLowerCase() === 'true'),
       DashboardSiswa: m.DashboardSiswa === true || String(m.DashboardSiswa || '').toLowerCase() === 'true',
       CreatedAt: m.CreatedAt || '',
       UpdatedAt: m.UpdatedAt || ''
@@ -2695,7 +2697,7 @@ function clearAllData() {
         spreadsheetId: config.spreadsheetId, includeInactive: false
       });
       if (!res.success) { holder.innerHTML = ''; return; }
-      customGuruMenus = (Array.isArray(res.data) ? res.data : []).filter(menu => menu.DashboardGuru === true || String(menu.DashboardGuru || '').toLowerCase() === 'true');
+      customGuruMenus = (Array.isArray(res.data) ? res.data : []).filter(menu => menu.DashboardGuru === true || String(menu.DashboardGuru || '').trim().toLowerCase() === 'true' || menu.DashboardGuru === '' || menu.DashboardGuru == null);
       holder.innerHTML = '';
       customGuruMenus.forEach(menu => {
         const safeId = String(menu.ID || '').replace(/[^a-zA-Z0-9_-]/g,'');
@@ -2808,7 +2810,7 @@ function clearAllData() {
         const info = document.createElement('div'); info.className = 'flex-1 min-w-0';
         const name = document.createElement('div'); name.className = 'text-xs font-bold text-slate-800 truncate'; name.textContent = menu.NamaMenu || '';
         const target = document.createElement('div'); target.className = 'text-[10px] text-slate-400 truncate mt-0.5';
-        const audience = [(menu.DashboardGuru === true || String(menu.DashboardGuru || '').toLowerCase() === 'true') ? 'Guru' : '', (menu.DashboardSiswa === true || String(menu.DashboardSiswa || '').toLowerCase() === 'true') ? 'Siswa' : ''].filter(Boolean).join(' + ') || 'Tidak ditampilkan';
+        const audience = [(menu.DashboardGuru === true || String(menu.DashboardGuru || '').trim().toLowerCase() === 'true' || menu.DashboardGuru === '' || menu.DashboardGuru == null) ? 'Guru' : '', (menu.DashboardSiswa === true || String(menu.DashboardSiswa || '').trim().toLowerCase() === 'true') ? 'Siswa' : ''].filter(Boolean).join(' + ') || 'Tidak ditampilkan';
         target.textContent = `${String(menu.Tipe).toUpperCase()} • ${menu.Target} • ${String(menu.TargetTab || 'same') === 'blank' ? 'Tab baru' : 'Tab yang sama'} • ${audience}`;
         info.appendChild(name); info.appendChild(target);
 
@@ -2871,7 +2873,7 @@ function clearAllData() {
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
               <p class="text-xs font-bold text-slate-700 mb-2"><i class="fa-solid fa-display text-indigo-600 mr-1"></i> Tampilkan di Dashboard</p>
               <div class="flex flex-wrap gap-4 text-xs">
-                <label class="inline-flex items-center gap-2 cursor-pointer"><input id="menu-dashboard-guru" type="checkbox" class="w-4 h-4 accent-indigo-600" ${(menu.DashboardGuru === true || String(menu.DashboardGuru || '').trim().toLowerCase() === 'true') ? 'checked' : ''}><span>Dashboard Guru</span></label>
+                <label class="inline-flex items-center gap-2 cursor-pointer"><input id="menu-dashboard-guru" type="checkbox" class="w-4 h-4 accent-indigo-600" ${(menu.DashboardGuru === true || String(menu.DashboardGuru || '').trim().toLowerCase() === 'true' || menu.DashboardGuru === '' || menu.DashboardGuru == null) ? 'checked' : ''}><span>Dashboard Guru</span></label>
                 <label class="inline-flex items-center gap-2 cursor-pointer"><input id="menu-dashboard-siswa" type="checkbox" class="w-4 h-4 accent-indigo-600" ${menu.DashboardSiswa === true ? 'checked' : ''}><span>Dashboard Siswa</span></label>
               </div>
               <p class="text-[10px] text-slate-400 mt-2">Pilih minimal satu dashboard agar menu dapat digunakan.</p>
@@ -3391,6 +3393,13 @@ function clearAllData() {
       const res = await apiCall('login', {}, { username, password, role, spreadsheetId });
       if (res.success) {
         currentUser = res.data;
+        // Pastikan login tercatat di sheet Aktivitas dan dapat langsung dibaca statistik dashboard Guru.
+        apiCall('logAktivitas', {}, {
+          username: currentUser.Username || username,
+          role: currentUser.Role || role,
+          spreadsheetId: config.spreadsheetId,
+          aktivitas: 'Login ' + String(currentUser.Role || role).toLowerCase() + ' berhasil'
+        }).catch(() => {});
         localStorage.setItem(APP_SESSION_KEY, JSON.stringify(currentUser));
         showToast(`Selamat datang, ${currentUser.Nama}!`, 'success');
         renderAppLayout();
