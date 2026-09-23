@@ -956,7 +956,7 @@ function getMenuGuru(body) {
       TargetTab: normalizeMenuTargetTab_(m.TargetTab),
       Urutan: Number(m.Urutan || 0),
       Status: normalizeMenuStatus_(m.Status),
-      DashboardGuru: m.DashboardGuru === '' || m.DashboardGuru == null ? true : String(m.DashboardGuru).toLowerCase() !== 'false',
+      DashboardGuru: m.DashboardGuru === true || String(m.DashboardGuru || '').trim().toLowerCase() === 'true',
       DashboardSiswa: m.DashboardSiswa === true || String(m.DashboardSiswa || '').toLowerCase() === 'true',
       CreatedAt: m.CreatedAt || '',
       UpdatedAt: m.UpdatedAt || ''
@@ -2695,7 +2695,7 @@ function clearAllData() {
         spreadsheetId: config.spreadsheetId, includeInactive: false
       });
       if (!res.success) { holder.innerHTML = ''; return; }
-      customGuruMenus = (Array.isArray(res.data) ? res.data : []).filter(menu => menu.DashboardGuru !== false);
+      customGuruMenus = (Array.isArray(res.data) ? res.data : []).filter(menu => menu.DashboardGuru === true || String(menu.DashboardGuru || '').toLowerCase() === 'true');
       holder.innerHTML = '';
       customGuruMenus.forEach(menu => {
         const safeId = String(menu.ID || '').replace(/[^a-zA-Z0-9_-]/g,'');
@@ -2808,7 +2808,7 @@ function clearAllData() {
         const info = document.createElement('div'); info.className = 'flex-1 min-w-0';
         const name = document.createElement('div'); name.className = 'text-xs font-bold text-slate-800 truncate'; name.textContent = menu.NamaMenu || '';
         const target = document.createElement('div'); target.className = 'text-[10px] text-slate-400 truncate mt-0.5';
-        const audience = [menu.DashboardGuru !== false ? 'Guru' : '', menu.DashboardSiswa === true ? 'Siswa' : ''].filter(Boolean).join(' + ') || 'Tidak ditampilkan';
+        const audience = [(menu.DashboardGuru === true || String(menu.DashboardGuru || '').toLowerCase() === 'true') ? 'Guru' : '', (menu.DashboardSiswa === true || String(menu.DashboardSiswa || '').toLowerCase() === 'true') ? 'Siswa' : ''].filter(Boolean).join(' + ') || 'Tidak ditampilkan';
         target.textContent = `${String(menu.Tipe).toUpperCase()} • ${menu.Target} • ${String(menu.TargetTab || 'same') === 'blank' ? 'Tab baru' : 'Tab yang sama'} • ${audience}`;
         info.appendChild(name); info.appendChild(target);
 
